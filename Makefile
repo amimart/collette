@@ -22,7 +22,7 @@ build: build-rust ## Build rust (i.e. not docker)
 .PHONY: build-rust
 build-rust: ## Build the Rust sources
 	@printf "$(COLOR_GREEN)$(BOLD)🔨 Building...$(COLOR_RESET)\n"
-	cargo build
+	cargo build --all-features
 
 ## Test:
 .PHONY: test
@@ -31,7 +31,7 @@ test: test-rust ## Run all tests
 .PHONY: test-rust
 test-rust: ## Run Rust tests
 	@printf "$(COLOR_GREEN)$(BOLD)🧪 Running tests...$(COLOR_RESET)\n"
-	cargo test
+	cargo test --all-features
 
 ## Lint:
 .PHONY: lint
