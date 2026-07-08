@@ -6,7 +6,7 @@ use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
     WriteKVStore,
 };
-use redb_crate::{
+use redb::{
     Database, ReadOnlyTable, ReadTransaction, ReadableDatabase, ReadableTable, Table,
     TableDefinition, WriteTransaction,
 };
@@ -18,9 +18,9 @@ use std::sync::{Arc, RwLock};
 type BytesTableDefinition<'a> = TableDefinition<'a, &'static [u8], &'static [u8]>;
 type ReadTable = ReadOnlyTable<&'static [u8], &'static [u8]>;
 type WriteTable<'a> = Table<'a, &'static [u8], &'static [u8]>;
-type RedbRange<'a> = redb_crate::Range<'a, &'static [u8], &'static [u8]>;
-type RedbAccessGuard<'a> = redb_crate::AccessGuard<'a, &'static [u8]>;
-type RedbRangeItem<'a> = redb_crate::Result<(RedbAccessGuard<'a>, RedbAccessGuard<'a>)>;
+type RedbRange<'a> = redb::Range<'a, &'static [u8], &'static [u8]>;
+type RedbAccessGuard<'a> = redb::AccessGuard<'a, &'static [u8]>;
+type RedbRangeItem<'a> = redb::Result<(RedbAccessGuard<'a>, RedbAccessGuard<'a>)>;
 type ScanResult = Result<(Vec<u8>, Vec<u8>), BackendError>;
 type TableKey = (&'static str, &'static str);
 type PreparedTables = BTreeMap<TableKey, Arc<str>>;
