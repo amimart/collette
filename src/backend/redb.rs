@@ -45,6 +45,29 @@ impl RedbMultiStore {
     }
 }
 
+pub struct RedbReadStore {
+    table: ReadTable,
+}
+
+impl ReadKVStore for RedbReadStore {
+    type Iter = IntoIter<ScanResult>;
+
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+        self.table
+            .get(key.as_ref())
+            .map(|value| value.map(|value| value.value().to_vec()))
+            .map_err(BackendError::new)
+    }
+
+    fn scan(
+        self,
+        range: impl RangeBounds<Vec<u8>>,
+        direction: Direction,
+    ) -> Result<Self::Iter, BackendError> {
+        collect_scan(&self.table, range, direction)
+    }
+}
+
 pub struct RedbWriteStore<'a> {
     table: WriteTable<'a>,
 }
