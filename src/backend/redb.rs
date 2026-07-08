@@ -254,6 +254,11 @@ fn push_hex(out: &mut String, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::tests::multistore_contract_tests;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn table_names_are_hex_encoded() {
@@ -262,4 +267,18 @@ mod tests {
             "colette:v1:7573657273:5f5f6d61696e"
         );
     }
+
+    fn make_db() -> RedbMultiStore {
+        RedbMultiStore::create(temp_db_path()).unwrap()
+    }
+
+    fn temp_db_path() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "colette-redb-contract-{}-{}.redb",
+            std::process::id(),
+            NEXT_DB.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    multistore_contract_tests!(make_db);
 }
