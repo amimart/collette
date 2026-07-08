@@ -1,13 +1,26 @@
 //! redb-backed [`MultiStore`](crate::store::MultiStore) implementation.
 
 use crate::error::BackendError;
-use redb_crate::{Database, TableDefinition};
+use crate::scan::Direction;
+use crate::store::{
+    MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
+    WriteKVStore,
+};
+use redb_crate::{
+    Database, ReadOnlyTable, ReadTransaction, ReadableDatabase, ReadableTable, Table,
+    TableDefinition, WriteTransaction,
+};
+use std::ops::{Bound, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
+use std::vec::IntoIter;
 
 const TABLE_PREFIX: &str = "colette:v1";
 
 type BytesTableDefinition<'a> = TableDefinition<'a, &'static [u8], &'static [u8]>;
+type ReadTable = ReadOnlyTable<&'static [u8], &'static [u8]>;
+type WriteTable<'a> = Table<'a, &'static [u8], &'static [u8]>;
+type ScanResult = Result<(Vec<u8>, Vec<u8>), BackendError>;
 
 #[derive(Clone)]
 pub struct RedbMultiStore {
