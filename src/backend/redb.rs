@@ -15,11 +15,13 @@ use std::fmt::{Display, Formatter};
 use std::ops::{Bound, RangeBounds};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use std::vec::IntoIter;
 
 type BytesTableDefinition<'a> = TableDefinition<'a, &'static [u8], &'static [u8]>;
 type ReadTable = ReadOnlyTable<&'static [u8], &'static [u8]>;
 type WriteTable<'a> = Table<'a, &'static [u8], &'static [u8]>;
+type RedbRange<'a> = redb_crate::Range<'a, &'static [u8], &'static [u8]>;
+type RedbAccessGuard<'a> = redb_crate::AccessGuard<'a, &'static [u8]>;
+type RedbRangeItem<'a> = redb_crate::Result<(RedbAccessGuard<'a>, RedbAccessGuard<'a>)>;
 type ScanResult = Result<(Vec<u8>, Vec<u8>), BackendError>;
 type TableKey = (&'static str, &'static str);
 type PreparedTables = BTreeMap<TableKey, Arc<str>>;
@@ -158,7 +160,7 @@ pub struct RedbReadStore {
 }
 
 impl ReadKVStore for RedbReadStore {
-    type Iter = IntoIter<ScanResult>;
+    type Iter = RedbReadIterator;
 
     fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
         self.table
@@ -172,7 +174,15 @@ impl ReadKVStore for RedbReadStore {
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
     ) -> Result<Self::Iter, BackendError> {
-        collect_scan(&self.table, range, direction)
+        let bounds = scan_bounds(&range);
+        let range = self
+            .table
+            .range::<&[u8]>(bounds)
+            .map_err(BackendError::new)?;
+
+        Ok(RedbReadIterator {
+            inner: DirectedRange::new(range, direction),
+        })
     }
 }
 
@@ -198,8 +208,8 @@ impl<'a> WriteKVStore<'a> for RedbWriteStore<'a> {
     }
 }
 
-impl ReadKVStore for RedbWriteStore<'_> {
-    type Iter = IntoIter<ScanResult>;
+impl<'txn> ReadKVStore for RedbWriteStore<'txn> {
+    type Iter = RedbWriteIterator<'txn>;
 
     fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
         self.table
@@ -213,7 +223,69 @@ impl ReadKVStore for RedbWriteStore<'_> {
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
     ) -> Result<Self::Iter, BackendError> {
-        collect_scan(&self.table, range, direction)
+        let table = self.table;
+        let bounds = scan_bounds(&range);
+        let range = table.range::<&[u8]>(bounds).map_err(BackendError::new)?;
+
+        // redb's write-table range only carries a lifetime to prevent mutation
+        // through the table while the range is alive. This iterator owns the
+        // table and drops the range first, so the same invariant is preserved.
+        let range = unsafe { std::mem::transmute::<RedbRange<'_>, RedbRange<'static>>(range) };
+
+        Ok(RedbWriteIterator {
+            inner: DirectedRange::new(range, direction),
+            _table: table,
+        })
+    }
+}
+
+pub struct RedbReadIterator {
+    inner: DirectedRange<'static>,
+}
+
+impl Iterator for RedbReadIterator {
+    type Item = ScanResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+pub struct RedbWriteIterator<'txn> {
+    inner: DirectedRange<'static>,
+    _table: WriteTable<'txn>,
+}
+
+impl Iterator for RedbWriteIterator<'_> {
+    type Item = ScanResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+enum DirectedRange<'a> {
+    LeftToRight(RedbRange<'a>),
+    RightToLeft(RedbRange<'a>),
+}
+
+impl<'a> DirectedRange<'a> {
+    fn new(range: RedbRange<'a>, direction: Direction) -> Self {
+        match direction {
+            Direction::LeftToRight => Self::LeftToRight(range),
+            Direction::RightToLeft => Self::RightToLeft(range),
+        }
+    }
+}
+
+impl Iterator for DirectedRange<'_> {
+    type Item = ScanResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::LeftToRight(range) => range.next().map(scan_entry),
+            Self::RightToLeft(range) => range.next_back().map(scan_entry),
+        }
     }
 }
 
@@ -250,33 +322,14 @@ impl Display for UnpreparedStore {
 
 impl std::error::Error for UnpreparedStore {}
 
-fn collect_scan<T>(
-    table: &T,
-    range: impl RangeBounds<Vec<u8>>,
-    direction: Direction,
-) -> Result<IntoIter<ScanResult>, BackendError>
-where
-    T: ReadableTable<&'static [u8], &'static [u8]>,
-{
-    let bounds = (
+fn scan_bounds(range: &impl RangeBounds<Vec<u8>>) -> (Bound<&[u8]>, Bound<&[u8]>) {
+    (
         bytes_bound(range.start_bound()),
         bytes_bound(range.end_bound()),
-    );
-    let iter = table.range::<&[u8]>(bounds).map_err(BackendError::new)?;
-    let results: Vec<ScanResult> = match direction {
-        Direction::LeftToRight => iter.map(scan_entry).collect(),
-        Direction::RightToLeft => iter.rev().map(scan_entry).collect(),
-    };
-
-    Ok(results.into_iter())
+    )
 }
 
-fn scan_entry(
-    entry: redb_crate::Result<(
-        redb_crate::AccessGuard<'_, &'static [u8]>,
-        redb_crate::AccessGuard<'_, &'static [u8]>,
-    )>,
-) -> ScanResult {
+fn scan_entry(entry: RedbRangeItem<'_>) -> ScanResult {
     let (key, value) = entry.map_err(BackendError::new)?;
     Ok((key.value().to_vec(), value.value().to_vec()))
 }
