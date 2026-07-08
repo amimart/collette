@@ -11,7 +11,6 @@ use redb_crate::{
     TableDefinition, WriteTransaction,
 };
 use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
 use std::ops::{Bound, RangeBounds};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -121,7 +120,7 @@ impl MultiStoreReadHandle for RedbReadHandle {
     type Store = RedbReadStore;
 
     fn open_store(&self, name: &'static str) -> Result<Self::Store, BackendError> {
-        let table = prepared_table_name(&self.tables, self.namespace, name)?;
+        let table = prepared_table_name(&self.tables, self.namespace, name);
         Ok(RedbReadStore {
             table: self
                 .read
@@ -141,7 +140,7 @@ impl MultiStoreWriteHandle for RedbWriteHandle {
     type Store<'a> = RedbWriteStore<'a>;
 
     fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, BackendError> {
-        let table = prepared_table_name(&self.tables, self.namespace, name)?;
+        let table = prepared_table_name(&self.tables, self.namespace, name);
         Ok(RedbWriteStore {
             table: self
                 .write
@@ -297,30 +296,14 @@ fn prepared_table_name(
     tables: &PreparedTables,
     namespace: &'static str,
     store: &'static str,
-) -> Result<Arc<str>, BackendError> {
-    tables
-        .get(&(namespace, store))
-        .cloned()
-        .ok_or_else(|| BackendError::new(UnpreparedStore { namespace, store }))
-}
-
-#[derive(Debug)]
-struct UnpreparedStore {
-    namespace: &'static str,
-    store: &'static str,
-}
-
-impl Display for UnpreparedStore {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
+) -> Arc<str> {
+    tables.get(&(namespace, store)).cloned().unwrap_or_else(|| {
+        panic!(
             "store '{}' in namespace '{}' has not been prepared",
-            self.store, self.namespace
+            store, namespace
         )
-    }
+    })
 }
-
-impl std::error::Error for UnpreparedStore {}
 
 fn scan_bounds(range: &impl RangeBounds<Vec<u8>>) -> (Bound<&[u8]>, Bound<&[u8]>) {
     (
@@ -374,13 +357,14 @@ mod tests {
     }
 
     #[test]
-    fn write_open_store_rejects_unprepared_stores() {
+    #[should_panic(expected = "store 'missing' in namespace 'users' has not been prepared")]
+    fn write_open_store_panics_for_unprepared_stores() {
         let db = make_db();
         db.prepare("users", ["__main"]).unwrap();
 
         let mut write = db.write("users").unwrap();
 
-        assert!(write.open_store("missing").is_err());
+        write.open_store("missing").unwrap();
     }
 
     #[test]
@@ -393,11 +377,19 @@ mod tests {
         db.prepare("users", ["new"]).unwrap();
 
         assert!(read_before.open_store("old").is_ok());
-        assert!(read_before.open_store("new").is_err());
+        assert_panics(|| {
+            read_before.open_store("new").unwrap();
+        });
 
         let read_after = db.read("users").unwrap();
-        assert!(read_after.open_store("old").is_err());
+        assert_panics(|| {
+            read_after.open_store("old").unwrap();
+        });
         assert!(read_after.open_store("new").is_ok());
+    }
+
+    fn assert_panics(f: impl FnOnce()) {
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err());
     }
 
     fn make_db() -> RedbMultiStore {
