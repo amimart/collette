@@ -6,7 +6,7 @@ use crate::store::{
 };
 use std::collections::BTreeMap;
 use std::ops::RangeBounds;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::vec::IntoIter;
 
 pub struct InMemoryMultiStore {
@@ -14,14 +14,63 @@ pub struct InMemoryMultiStore {
 }
 
 pub type SharedNamespaces = Arc<RwLock<Namespaces>>;
-pub type Namespaces = BTreeMap<&'static str, SharedNamespacedStores>;
-pub type SharedNamespacedStores = Arc<RwLock<Arc<NamespacedStores>>>;
+pub type Namespaces = BTreeMap<&'static str, Arc<NamespacedState>>;
 pub type NamespacedStores = BTreeMap<&'static str, Arc<KVStore>>;
 pub type StagedStores = BTreeMap<&'static str, KVStore>;
 pub type KVStore = BTreeMap<Vec<u8>, Vec<u8>>;
 pub type ScanItem = (Vec<u8>, Vec<u8>);
 pub type ScanResult = Result<ScanItem, BackendError>;
 pub type ScanResults = Vec<ScanResult>;
+
+pub struct NamespacedState {
+    stores: RwLock<Arc<NamespacedStores>>,
+    writer: Arc<WriterGate>,
+}
+
+impl NamespacedState {
+    fn new(stores: NamespacedStores) -> Self {
+        Self {
+            stores: RwLock::new(Arc::new(stores)),
+            writer: Arc::new(WriterGate::new()),
+        }
+    }
+}
+
+struct WriterGate {
+    open: Mutex<bool>,
+    available: Condvar,
+}
+
+impl WriterGate {
+    fn new() -> Self {
+        Self {
+            open: Mutex::new(false),
+            available: Condvar::new(),
+        }
+    }
+
+    fn acquire(self: &Arc<Self>) -> WriterPermit {
+        let mut open = self.open.lock().unwrap();
+        while *open {
+            open = self.available.wait(open).unwrap();
+        }
+        *open = true;
+
+        WriterPermit { gate: self.clone() }
+    }
+}
+
+struct WriterPermit {
+    gate: Arc<WriterGate>,
+}
+
+impl Drop for WriterPermit {
+    fn drop(&mut self) {
+        let mut open = self.gate.open.lock().unwrap();
+        *open = false;
+        self.gate.available.notify_one();
+    }
+}
 
 impl Default for InMemoryMultiStore {
     fn default() -> Self {
@@ -52,31 +101,33 @@ impl MultiStore for InMemoryMultiStore {
         });
 
         let mut db = self.stores.write().unwrap();
-        db.insert(namespace, Arc::from(RwLock::from(Arc::from(nstores))));
+        db.insert(namespace, Arc::new(NamespacedState::new(nstores)));
 
         Ok(())
     }
 
     fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, BackendError> {
         let db = self.stores.read().unwrap();
-        let nstores = db.get(namespace).unwrap();
-        let snapshot = nstores.read().unwrap().clone();
+        let state = db.get(namespace).unwrap();
+        let snapshot = state.stores.read().unwrap().clone();
 
         Ok(InMemoryReadHandle { stores: snapshot })
     }
 
     fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, BackendError> {
         let db = self.stores.read().unwrap();
-        let nstores = db.get(namespace).unwrap();
-        let snapshot = nstores.read().unwrap().clone();
+        let state = db.get(namespace).unwrap();
+        let permit = state.writer.acquire();
+        let snapshot = state.stores.read().unwrap().clone();
         let staged = snapshot
             .iter()
             .map(|(n, s)| (*n, s.as_ref().clone()))
             .collect();
 
         Ok(InMemoryWriteHandle {
-            namespace: nstores.clone(),
+            namespace: state.clone(),
             staged,
+            _permit: permit,
         })
     }
 }
@@ -130,8 +181,9 @@ impl ReadKVStore for InMemoryReadStore {
 }
 
 pub struct InMemoryWriteHandle {
-    namespace: Arc<RwLock<Arc<NamespacedStores>>>,
+    namespace: Arc<NamespacedState>,
     staged: StagedStores,
+    _permit: WriterPermit,
 }
 
 impl MultiStoreWriteHandle for InMemoryWriteHandle {
@@ -150,7 +202,7 @@ impl MultiStoreWriteHandle for InMemoryWriteHandle {
             .map(|(n, s)| (n, Arc::new(s)))
             .collect();
 
-        let mut stores = self.namespace.write().unwrap();
+        let mut stores = self.namespace.stores.write().unwrap();
         *stores = Arc::new(new_stores);
         Ok(())
     }

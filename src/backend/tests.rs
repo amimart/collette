@@ -3,9 +3,11 @@ use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
 };
 use std::ops::{Bound, RangeBounds};
+use std::sync::mpsc;
+use std::time::Duration;
 
 #[allow(dead_code)]
-pub fn run_multistore_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
+pub fn run_multistore_tests<DB: MultiStore + Sync>(make_db: impl Fn() -> DB) {
     basic_operations(&make_db);
     namespace_isolation(&make_db);
     store_isolation(&make_db);
@@ -13,6 +15,7 @@ pub fn run_multistore_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     write_handle_reads_include_uncommitted_writes(&make_db);
     read_handles_keep_stable_snapshots(&make_db);
     multiple_read_handles_ignore_open_write_and_commit(&make_db);
+    second_write_waits_for_open_write_to_finish(&make_db);
     multi_store_commits_are_atomic(&make_db);
     scans(&make_db);
 }
@@ -57,6 +60,11 @@ macro_rules! multistore_contract_tests {
                 $crate::backend::tests::multiple_read_handles_ignore_open_write_and_commit(
                     &$make_db,
                 );
+            }
+
+            #[test]
+            fn second_write_waits_for_open_write_to_finish() {
+                $crate::backend::tests::second_write_waits_for_open_write_to_finish(&$make_db);
             }
 
             #[test]
@@ -254,6 +262,44 @@ pub(crate) fn multiple_read_handles_ignore_open_write_and_commit<DB: MultiStore>
     let items = after.open_store("items").unwrap();
     assert_eq!(items.get(b"k").unwrap(), Some(b"after".to_vec()));
     assert_eq!(items.get(b"new").unwrap(), Some(b"created".to_vec()));
+}
+
+pub(crate) fn second_write_waits_for_open_write_to_finish<DB>(make_db: &impl Fn() -> DB)
+where
+    DB: MultiStore + Sync,
+{
+    let db = make_db();
+    db.prepare("single-writer", ["items"]).unwrap();
+
+    let mut first_write = Some(db.write("single-writer").unwrap());
+    let (events_tx, events_rx) = mpsc::channel();
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            events_tx.send("attempting").unwrap();
+            let _second_write = db.write("single-writer").unwrap();
+            events_tx.send("opened").unwrap();
+        });
+
+        assert_eq!(
+            events_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "attempting"
+        );
+        assert!(
+            matches!(
+                events_rx.recv_timeout(Duration::from_millis(50)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ),
+            "a second write handle should wait while another write handle is open"
+        );
+
+        drop(first_write.take());
+
+        assert_eq!(
+            events_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "opened"
+        );
+    });
 }
 
 pub(crate) fn multi_store_commits_are_atomic<DB: MultiStore>(make_db: &impl Fn() -> DB) {
