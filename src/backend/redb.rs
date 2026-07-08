@@ -17,8 +17,6 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::vec::IntoIter;
 
-const TABLE_PREFIX: &str = "colette:v1";
-
 type BytesTableDefinition<'a> = TableDefinition<'a, &'static [u8], &'static [u8]>;
 type ReadTable = ReadOnlyTable<&'static [u8], &'static [u8]>;
 type WriteTable<'a> = Table<'a, &'static [u8], &'static [u8]>;
@@ -292,10 +290,7 @@ fn bytes_bound(bound: Bound<&Vec<u8>>) -> Bound<&[u8]> {
 }
 
 fn table_name(namespace: &str, store: &str) -> String {
-    let mut name =
-        String::with_capacity(TABLE_PREFIX.len() + 2 + namespace.len() * 2 + store.len() * 2);
-    name.push_str(TABLE_PREFIX);
-    name.push(':');
+    let mut name = String::with_capacity(namespace.len() * 2 + 1 + store.len() * 2);
     push_hex(&mut name, namespace.as_bytes());
     name.push(':');
     push_hex(&mut name, store.as_bytes());
@@ -322,10 +317,7 @@ mod tests {
 
     #[test]
     fn table_names_are_hex_encoded() {
-        assert_eq!(
-            table_name("users", "__main"),
-            "colette:v1:7573657273:5f5f6d61696e"
-        );
+        assert_eq!(table_name("users", "__main"), "7573657273:5f5f6d61696e");
     }
 
     #[test]
