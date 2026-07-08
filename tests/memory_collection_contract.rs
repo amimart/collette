@@ -1,3 +1,5 @@
+#![cfg(feature = "memory")]
+
 mod common;
 
 use colette::backend::memory::InMemoryMultiStore;
