@@ -45,6 +45,48 @@ impl RedbMultiStore {
     }
 }
 
+pub struct RedbReadHandle {
+    namespace: &'static str,
+    read: ReadTransaction,
+}
+
+impl MultiStoreReadHandle for RedbReadHandle {
+    type Store = RedbReadStore;
+
+    fn open_store(&self, name: &'static str) -> Result<Self::Store, BackendError> {
+        let table = table_name(self.namespace, name);
+        Ok(RedbReadStore {
+            table: self
+                .read
+                .open_table(table_definition(&table))
+                .map_err(BackendError::new)?,
+        })
+    }
+}
+
+pub struct RedbWriteHandle {
+    namespace: &'static str,
+    write: WriteTransaction,
+}
+
+impl MultiStoreWriteHandle for RedbWriteHandle {
+    type Store<'a> = RedbWriteStore<'a>;
+
+    fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, BackendError> {
+        let table = table_name(self.namespace, name);
+        Ok(RedbWriteStore {
+            table: self
+                .write
+                .open_table(table_definition(&table))
+                .map_err(BackendError::new)?,
+        })
+    }
+
+    fn commit(self) -> Result<(), BackendError> {
+        self.write.commit().map_err(BackendError::new)
+    }
+}
+
 pub struct RedbReadStore {
     table: ReadTable,
 }
