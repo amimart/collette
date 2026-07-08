@@ -45,6 +45,47 @@ impl RedbMultiStore {
     }
 }
 
+pub struct RedbWriteStore<'a> {
+    table: WriteTable<'a>,
+}
+
+impl<'a> ReadWriteKVStore<'a> for RedbWriteStore<'a> {}
+
+impl<'a> WriteKVStore<'a> for RedbWriteStore<'a> {
+    fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), BackendError> {
+        self.table
+            .insert(key.as_ref(), value.as_ref())
+            .map(|_| ())
+            .map_err(BackendError::new)
+    }
+
+    fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), BackendError> {
+        self.table
+            .remove(key.as_ref())
+            .map(|_| ())
+            .map_err(BackendError::new)
+    }
+}
+
+impl ReadKVStore for RedbWriteStore<'_> {
+    type Iter = IntoIter<ScanResult>;
+
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+        self.table
+            .get(key.as_ref())
+            .map(|value| value.map(|value| value.value().to_vec()))
+            .map_err(BackendError::new)
+    }
+
+    fn scan(
+        self,
+        range: impl RangeBounds<Vec<u8>>,
+        direction: Direction,
+    ) -> Result<Self::Iter, BackendError> {
+        collect_scan(&self.table, range, direction)
+    }
+}
+
 fn table_definition(name: &str) -> BytesTableDefinition<'_> {
     TableDefinition::new(name)
 }
