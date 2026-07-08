@@ -25,6 +25,7 @@ pub enum Error {
 pub struct BackendError(Box<dyn std::error::Error + Send + Sync>);
 
 impl BackendError {
+    #[cfg(any(test, feature = "redb"))]
     pub(crate) fn new(e: impl std::error::Error + Send + Sync + 'static) -> Self {
         BackendError(Box::new(e))
     }
