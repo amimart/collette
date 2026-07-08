@@ -201,7 +201,7 @@ where
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexScan::new(self.name, self.db.read(self.name)?))
+        Ok(IndexScan::new(Self::MAIN_STORE, self.db.read(self.name)?))
     }
 }
 
