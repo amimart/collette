@@ -12,6 +12,7 @@ pub fn run_multistore_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     committed_writes_are_visible(&make_db);
     write_handle_reads_include_uncommitted_writes(&make_db);
     read_handles_keep_stable_snapshots(&make_db);
+    multiple_read_handles_ignore_open_write_and_commit(&make_db);
     multi_store_commits_are_atomic(&make_db);
     scans(&make_db);
 }
@@ -49,6 +50,13 @@ macro_rules! multistore_contract_tests {
             #[test]
             fn read_handles_keep_stable_snapshots() {
                 $crate::backend::tests::read_handles_keep_stable_snapshots(&$make_db);
+            }
+
+            #[test]
+            fn multiple_read_handles_ignore_open_write_and_commit() {
+                $crate::backend::tests::multiple_read_handles_ignore_open_write_and_commit(
+                    &$make_db,
+                );
             }
 
             #[test]
@@ -195,6 +203,57 @@ pub(crate) fn read_handles_keep_stable_snapshots<DB: MultiStore>(make_db: &impl 
         get(&db, "snapshots", "items", b"k"),
         Some(b"after".to_vec())
     );
+}
+
+pub(crate) fn multiple_read_handles_ignore_open_write_and_commit<DB: MultiStore>(
+    make_db: &impl Fn() -> DB,
+) {
+    let db = make_db();
+    db.prepare("mvcc-readers", ["items"]).unwrap();
+
+    commit_entries(
+        &db,
+        "mvcc-readers",
+        "items",
+        &[(b"k".to_vec(), b"before".to_vec())],
+    );
+
+    let read_a = db.read("mvcc-readers").unwrap();
+    let read_b = db.read("mvcc-readers").unwrap();
+
+    let mut write = db.write("mvcc-readers").unwrap();
+    {
+        let mut items = write.open_store("items").unwrap();
+        items.set(b"k", b"after").unwrap();
+        items.set(b"new", b"created").unwrap();
+    }
+
+    for read in [&read_a, &read_b, &db.read("mvcc-readers").unwrap()] {
+        let items = read.open_store("items").unwrap();
+        assert_eq!(items.get(b"k").unwrap(), Some(b"before".to_vec()));
+        assert_eq!(items.get(b"new").unwrap(), None);
+    }
+
+    write.commit().unwrap();
+
+    for read in [&read_a, &read_b] {
+        let items = read.open_store("items").unwrap();
+        assert_eq!(
+            items.get(b"k").unwrap(),
+            Some(b"before".to_vec()),
+            "existing read handles should not observe later commits"
+        );
+        assert_eq!(
+            items.get(b"new").unwrap(),
+            None,
+            "existing read handles should not observe newly committed keys"
+        );
+    }
+
+    let after = db.read("mvcc-readers").unwrap();
+    let items = after.open_store("items").unwrap();
+    assert_eq!(items.get(b"k").unwrap(), Some(b"after".to_vec()));
+    assert_eq!(items.get(b"new").unwrap(), Some(b"created".to_vec()));
 }
 
 pub(crate) fn multi_store_commits_are_atomic<DB: MultiStore>(make_db: &impl Fn() -> DB) {
