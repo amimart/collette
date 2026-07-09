@@ -398,7 +398,7 @@ mod tests {
 
     fn temp_db_path() -> PathBuf {
         std::env::temp_dir().join(format!(
-            "colette-redb-contract-{}-{}.redb",
+            "collette-redb-contract-{}-{}.redb",
             std::process::id(),
             NEXT_DB.fetch_add(1, Ordering::Relaxed)
         ))

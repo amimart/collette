@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
-use colette::collection::{collection, Collection};
-use colette::entity::Entity;
-use colette::error::{CodecError, Error};
-use colette::impl_enum_key;
-use colette::index::{Index, Multi, Unique};
-use colette::index_registry::{Cons, Nil};
-use colette::key::{Key, KeySize};
-use colette::scan::{Direction, IndexScan, PrefixScan};
-use colette::store::{MultiStore, MultiStoreReadHandle};
+use collette::collection::{collection, Collection};
+use collette::entity::Entity;
+use collette::error::{CodecError, Error};
+use collette::impl_enum_key;
+use collette::index::{Index, Multi, Unique};
+use collette::index_registry::{Cons, Nil};
+use collette::key::{Key, KeySize};
+use collette::scan::{Direction, IndexScan, PrefixScan};
+use collette::store::{MultiStore, MultiStoreReadHandle};
 
 pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     single_value_primary_key_behaviour(&make_db);
@@ -762,7 +762,7 @@ fn scan_handles<'a, ReadHandle, Idx>(scan: IndexScan<'a, ReadHandle, User, Idx>)
 where
     ReadHandle: MultiStoreReadHandle,
     Idx: Index<User>,
-    for<'b> Idx::Kind<'b>: colette::index::IndexKind<Idx::Key<'b>, <User as Entity>::Key<'b>>,
+    for<'b> Idx::Kind<'b>: collette::index::IndexKind<Idx::Key<'b>, <User as Entity>::Key<'b>>,
 {
     scan.iter()
         .unwrap()

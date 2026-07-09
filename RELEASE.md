@@ -1,6 +1,6 @@
 # Release Process
 
-Colette releases are cut manually from the `main` branch.
+Collette releases are cut manually from the `main` branch.
 
 ## Versioning
 

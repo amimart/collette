@@ -2,7 +2,7 @@ use crate::inline_vec::IVec;
 use crate::{impl_signed_integer_key, impl_unsigned_integer_key};
 use std::fmt::Debug;
 
-/// A value that can be encoded as an ordered key for Colette stores and indexes.
+/// A value that can be encoded as an ordered key for Collette stores and indexes.
 ///
 /// The encoded representation must preserve the logical ordering of the value.
 ///
@@ -25,7 +25,7 @@ use std::fmt::Debug;
 /// escaping/framing so that composite keys remain unambiguous.
 ///
 /// Implementations for variable-size keys should use the helper functions
-/// provided by Colette to encode and decode variable-size key bytes:
+/// provided by Collette to encode and decode variable-size key bytes:
 /// - `encode_unsized_key_bytes`;
 /// - `decode_unsized_key_bytes`;
 ///
@@ -41,7 +41,7 @@ use std::fmt::Debug;
 pub trait Key: Debug + Eq {
     /// The encoded size of the key.
     ///
-    /// Fixed-size keys allow Colette to preallocate buffers efficiently.
+    /// Fixed-size keys allow Collette to preallocate buffers efficiently.
     const SIZE: KeySize;
 
     type OwnedKey: Key + Sized;
@@ -55,7 +55,7 @@ pub trait Key: Debug + Eq {
     /// Implementations should rely if possible on the underlying bytes of the key (e.g. for
     /// fixed-size keys) to avoid unnecessary allocations.
     ///
-    /// Variable-size keys should use Colette encoding helper (i.e. `encode_unsized_key_bytes`) to
+    /// Variable-size keys should use Collette encoding helper (i.e. `encode_unsized_key_bytes`) to
     /// ensure their encoded representation remains safe for composite keys and prefix scans.
     fn encode(&self) -> Self::EncodedBytes<'_>;
 
@@ -63,7 +63,7 @@ pub trait Key: Debug + Eq {
     ///
     /// Panics if the input is malformed or incomplete.
     ///
-    /// Variable-size keys should use Colette decoding helper (i.e. `decode_unsized_key_bytes`) to
+    /// Variable-size keys should use Collette decoding helper (i.e. `decode_unsized_key_bytes`) to
     /// decode escaped and framed key bytes correctly.
     fn decode_part(bytes: &[u8]) -> (Self::OwnedKey, &[u8]);
 
@@ -71,7 +71,7 @@ pub trait Key: Debug + Eq {
     ///
     /// Panics if the input is malformed, incomplete, or more than complete.
     ///
-    /// Variable-size keys should use Colette decoding helper (i.e. `decode_unsized_key_bytes`) to
+    /// Variable-size keys should use Collette decoding helper (i.e. `decode_unsized_key_bytes`) to
     /// decode escaped and framed key bytes correctly.
     fn decode(bytes: &[u8]) -> Self::OwnedKey {
         let (key, rest) = Self::decode_part(bytes);
@@ -88,7 +88,7 @@ pub enum KeySize {
     Variable,
 }
 
-/// Encodes variable-size key bytes using Colette escaping and framing rules.
+/// Encodes variable-size key bytes using Collette escaping and framing rules.
 ///
 /// The `0x00` byte is reserved internally:
 ///

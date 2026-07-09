@@ -28,7 +28,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           manifest_version="$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "colette") | .version')"
+            | jq -r '.packages[] | select(.name == "collette") | .version')"
           tag_version="${TAG#v}"
 
           if [ "${manifest_version}" != "${tag_version}" ]; then

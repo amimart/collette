@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Colette.
+Thanks for helping improve Collette.
 
 ## Development
 
