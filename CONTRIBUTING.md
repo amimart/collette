@@ -79,7 +79,8 @@ Pull requests that intentionally break the public API must include a
 Conventional Commit breaking marker in at least one commit. Use `!` in the
 commit header or add a `BREAKING CHANGE:` footer. Without that marker, the
 breaking-change detection workflow fails when it detects a breaking public API
-change.
+change. When that happens, the workflow comments on the pull request with the
+detected public API changes.
 
 ## Pull Request Labels
 
