@@ -6,7 +6,6 @@ use collette::error::{CodecError, Error};
 use collette::impl_enum_key;
 use collette::index::{Index, Multi, Unique};
 use collette::index_registry::{Cons, Nil};
-use collette::key::{Key, KeySize};
 use collette::scan::{Direction, IndexScan, PrefixScan};
 use collette::store::{MultiStore, MultiStoreReadHandle};
 
@@ -631,20 +630,6 @@ impl Index<User> for ByTeamStatusSeat {
 }
 
 pub fn user_collection<DB: MultiStore>(name: &'static str, db: DB) -> UserCollection<DB> {
-    db.prepare(
-        name,
-        [
-            "__main",
-            UniqueEmail::NAME,
-            UniqueRegionHandle::NAME,
-            UniqueRegionPlanHandle::NAME,
-            ByStatus::NAME,
-            ByRegionStatus::NAME,
-            ByTeamStatusSeat::NAME,
-        ],
-    )
-    .unwrap();
-
     collection::<User, DB>(name, db)
         .with_index::<UniqueEmail>()
         .with_index::<UniqueRegionHandle>()
@@ -659,7 +644,6 @@ pub fn membership_collection<DB: MultiStore>(
     name: &'static str,
     db: DB,
 ) -> MembershipCollection<DB> {
-    db.prepare(name, ["__main"]).unwrap();
     collection::<Membership, DB>(name, db).build()
 }
 
