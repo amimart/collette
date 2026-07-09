@@ -154,14 +154,6 @@ function cleanReleaseNotes(notes) {
   return notes
     .replace(/^## What's Changed\s*/m, "")
     .replace(/\n## New Contributors[\s\S]*?(?=\n\*\*Full Changelog\*\*:|\n## |\s*$)/m, "")
-    .split("\n")
-    .map((line) =>
-      line.replace(
-        /^(\s*[-*]\s+)(?:[\p{Extended_Pictographic}\uFE0F\u200D]+\s*)+/u,
-        "$1",
-      ),
-    )
-    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

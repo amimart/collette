@@ -29,8 +29,8 @@ cleans the generated body, and prepends the result to `CHANGELOG.md`.
 
 The same cleaned notes are used as the GitHub Release body.
 
-Leading emoji in pull request titles are removed from the generated changelog.
-For example, `🛠️ Fix cursor based scan` becomes `Fix cursor based scan`.
+Pull request title emojis are preserved in the generated changelog and can be
+used as lightweight visual categories.
 
 Pull requests can be grouped with these labels:
 
