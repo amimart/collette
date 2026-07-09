@@ -1,3 +1,8 @@
+//! Typed scan builders for secondary indexes.
+//!
+//! Scans are lazy: they collect bounds, direction, and cursor information until
+//! [`IndexScan::iter`] opens the backend stores and returns an iterator.
+
 use crate::bounds::{IntoScanBounds, ScanBound, ScanRange};
 use crate::entity::Entity;
 use crate::error::Error;
@@ -10,11 +15,19 @@ use std::marker::PhantomData;
 use std::ops::{Bound, Range, RangeBounds};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Iteration direction for range scans.
 pub enum Direction {
+    /// Scan from the smallest encoded key to the largest.
     LeftToRight,
+    /// Scan from the largest encoded key to the smallest.
     RightToLeft,
 }
 
+/// Lazy builder for scanning a collection index.
+///
+/// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
+/// range, prefix, direction, or cursor constraints before calling
+/// [`iter`](Self::iter).
 pub struct IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: 'a,
@@ -40,6 +53,9 @@ where
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
+    /// Creates an unconstrained index scan.
+    ///
+    /// This is primarily used by [`Collection::scan`](crate::Collection::scan).
     pub fn new(collection_name: &'static str, read_handle: ReadHandle) -> Self {
         Self {
             collection_name,
@@ -53,6 +69,9 @@ where
         }
     }
 
+    /// Restricts the scan to exact physical index-key bounds.
+    ///
+    /// Prefer the [`PrefixScan`] methods when scanning by a typed prefix.
     pub fn range(
         mut self,
         range: Range<Bound<StoreKey<'a, 'a, Idx, Record::Key<'a>, Record>>>,
@@ -62,16 +81,21 @@ where
         self
     }
 
+    /// Sets the scan direction.
     pub fn direction(mut self, direction: Direction) -> Self {
         self.direction = direction;
         self
     }
 
+    /// Starts the scan after the given physical index key.
+    ///
+    /// The cursor must fall inside the configured scan bounds.
     pub fn after(mut self, cursor: StoreKey<'a, 'a, Idx, Record::Key<'a>, Record>) -> Self {
         self.after = Some(cursor);
         self
     }
 
+    /// Opens the backend stores and returns an iterator over matching records.
     pub fn iter(self) -> Result<IndexIterator<ReadHandle::Store, Record>, Error> {
         let (left, right) = match self.after {
             Some(cursor) => Self::apply_cursor(
@@ -108,11 +132,19 @@ where
     }
 }
 
+/// Prefix scanning support for composite index keys.
+///
+/// This trait is implemented when the stored index key can be constrained by
+/// the supplied prefix type. For example, an index key `(Status, u64, &Id)` can
+/// be scanned with a `Status` prefix or a `(Status, u64)` prefix.
 pub trait PrefixScan<StoredKey: Key + Prefixable<KeyPrefix>, KeyPrefix: Prefix> {
+    /// Restricts the scan to all keys beginning with `prefix`.
     fn prefix(self, prefix: KeyPrefix) -> Self;
 
+    /// Restricts the scan to a range of typed prefixes.
     fn prefix_range(self, range: Range<Bound<KeyPrefix>>) -> Self;
 
+    /// Restricts the scan using either whole keys or prefixes as endpoints.
     fn range(self, range: Range<Bound<PrefixOrKey<StoredKey, KeyPrefix>>>) -> Self;
 }
 

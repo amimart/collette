@@ -3,22 +3,136 @@ use crate::error::Error;
 use crate::key::{AppendKey, Key};
 use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 
-/// Index allows to maintain a separate query efficient stores on non primary-key, it is made for
-/// a specific Entity and specified by a Key to index extracted from an Entity, and an IndexKind
-/// (i.e. Unique or Multi).
+/// A secondary lookup maintained for an [`Entity`].
+///
+/// An index extracts an ordered [`Key`] from a record and chooses an
+/// [`IndexKind`] that controls whether that key is unique or can point to many
+/// records.
+///
+/// # Unique index
+///
+/// ```no_run
+/// # use collette::{CodecError, Entity};
+/// #
+/// # struct User {
+/// #     id: u64,
+/// #     email: String,
+/// # }
+/// #
+/// # impl Entity for User {
+/// #     type Key<'a> = u64;
+/// #
+/// #     fn key(&self) -> Self::Key<'_> {
+/// #         self.id
+/// #     }
+/// #
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #         Ok(self.email.as_bytes().to_vec())
+/// #     }
+/// #
+/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+/// #         Ok(Self {
+/// #             id: 0,
+/// #             email: String::from_utf8_lossy(bytes).into_owned(),
+/// #         })
+/// #     }
+/// # }
+/// #
+/// struct ByEmail;
+///
+/// impl collette::Index<User> for ByEmail {
+///     type Key<'a> = &'a str;
+///     type Kind<'a> = collette::Unique;
+///
+///     const NAME: &'static str = "by_email";
+///
+///     fn key(user: &User) -> Self::Key<'_> {
+///         user.email.as_str()
+///     }
+/// }
+/// ```
+///
+/// # Multi index
+///
+/// Multi indexes append the entity primary key to the stored index key, so
+/// several records can share the same extracted value.
+///
+/// ```no_run
+/// # use collette::{CodecError, Entity};
+/// #
+/// # #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// # enum Status {
+/// #     Open,
+/// #     Closed,
+/// # }
+/// #
+/// # collette::impl_enum_key!(Status as u8 {
+/// #     Status::Open => 0,
+/// #     Status::Closed => 1,
+/// # });
+/// #
+/// # struct Task {
+/// #     id: u64,
+/// #     status: Status,
+/// # }
+/// #
+/// # impl Entity for Task {
+/// #     type Key<'a> = u64;
+/// #
+/// #     fn key(&self) -> Self::Key<'_> {
+/// #         self.id
+/// #     }
+/// #
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #         Ok(vec![self.status.encode()[0]])
+/// #     }
+/// #
+/// #     fn from_bytes(_bytes: &[u8]) -> Result<Self, CodecError> {
+/// #         Ok(Self {
+/// #             id: 0,
+/// #             status: Status::Open,
+/// #         })
+/// #     }
+/// # }
+/// # use collette::Key;
+/// #
+/// struct ByStatus;
+///
+/// impl collette::Index<Task> for ByStatus {
+///     type Key<'a> = (Status,);
+///     type Kind<'a> = collette::Multi;
+///
+///     const NAME: &'static str = "by_status";
+///
+///     fn key(task: &Task) -> Self::Key<'_> {
+///         (task.status,)
+///     }
+/// }
+/// ```
 pub trait Index<Record: Entity> {
+    /// The logical index key extracted from a record.
+    ///
+    /// This type may borrow from the record, which keeps index maintenance
+    /// allocation-friendly for string and byte-slice fields.
     type Key<'a>: Key
     where
         Record: 'a;
 
+    /// The physical index layout, usually [`Unique`] or [`Multi`].
     type Kind<'a>: IndexKind<Self::Key<'a>, Record::Key<'a>>
     where
         Record: 'a;
 
+    /// Backend store name for this index.
     const NAME: &'static str;
 
+    /// Extracts the logical index key from a record.
     fn key(entity: &Record) -> Self::Key<'_>;
 
+    /// Updates this index after a record insert, save, or update.
+    ///
+    /// Custom implementations are rarely needed; the default implementation
+    /// removes the old stored key when it changes and writes the new stored key.
     fn update<'a, DB: MultiStoreWriteHandle>(
         db: &mut DB,
         pk: &Record::Key<'a>,
@@ -51,6 +165,7 @@ pub trait Index<Record: Entity> {
         Ok(())
     }
 
+    /// Removes this record's index entry.
     fn remove<'a, DB: MultiStoreWriteHandle>(
         db: &mut DB,
         pk: &Record::Key<'a>,
@@ -63,14 +178,14 @@ pub trait Index<Record: Entity> {
     }
 }
 
+/// The backend key stored for an index entry.
 pub type StoreKey<'a, 'b, I, PK, T> =
     <<I as Index<T>>::Kind<'a> as IndexKind<<I as Index<T>>::Key<'b>, PK>>::StoreKey<'a, 'b>;
 
-/// IndexKind helps to specify an index behavior by expressing the actual stored key in the index
-/// based on the index key and the underlying entity primary key.
+/// Converts a logical index key into the physical key stored in the backend.
 ///
-/// For example, a unique index can store only the index key as the store key, while a multi index
-/// needs to append the primary key to the index key to guarantee the uniqueness of each entry.
+/// A [`Unique`] index stores only the logical index key. A [`Multi`] index
+/// appends the primary key to keep every index entry distinct.
 pub trait IndexKind<IndexKey, PrimaryKey>
 where
     IndexKey: Key,
@@ -81,11 +196,15 @@ where
         IndexKey: 'a,
         PrimaryKey: 'b;
 
+    /// Builds the physical key used in the index store.
     fn store_key<'a, 'b>(k: IndexKey, pk: &'b PrimaryKey) -> Self::StoreKey<'a, 'b>
     where
         IndexKey: 'a;
 }
 
+/// Unique index marker.
+///
+/// A unique index allows at most one record for each extracted index key.
 pub struct Unique;
 
 impl<IndexKey, PrimaryKey> IndexKind<IndexKey, PrimaryKey> for Unique
@@ -107,6 +226,10 @@ where
     }
 }
 
+/// Multi-value index marker.
+///
+/// A multi index allows several records to share the same extracted index key
+/// by appending the record primary key to each stored index entry.
 pub struct Multi;
 
 impl<IndexKey, PrimaryKey> IndexKind<IndexKey, PrimaryKey> for Multi

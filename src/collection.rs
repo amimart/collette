@@ -10,6 +10,15 @@ use crate::store::{
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
+/// A typed namespace of records and secondary indexes.
+///
+/// A collection stores each [`Entity`] in its primary store and maintains all
+/// configured indexes in the same backend namespace. Mutating operations update
+/// the record and every index in one backend write transaction.
+///
+/// Collections are created with [`collection`] and [`CollectionBuilder`]. The
+/// builder prepares the underlying multistore backend automatically; application
+/// code should not call backend storage traits directly.
 pub struct Collection<DB, Record, Indexes>
 where
     DB: MultiStore,
@@ -31,7 +40,16 @@ where
 {
     const MAIN_STORE: &'static str = "__main";
 
+    /// Creates a collection and prepares its backend stores.
+    ///
+    /// Most callers should use [`collection`] so indexes can be registered in
+    /// the type of the returned collection.
     pub fn new(name: &'static str, db: DB) -> Self {
+        let mut stores = vec![Self::MAIN_STORE];
+        Indexes::store_names(&mut stores);
+        db.prepare(name, stores)
+            .unwrap_or_else(|err| panic!("failed to prepare collection '{name}': {err}"));
+
         Self {
             name,
             db,
@@ -39,7 +57,7 @@ where
         }
     }
 
-    /// Inserts a new record into the collection.
+    /// Inserts a new record.
     ///
     /// Returns an error if a record with the same primary key already exists.
     ///
@@ -65,7 +83,7 @@ where
         tx.commit().map_err(Error::Backend)
     }
 
-    /// Updates an existing record in the collection.
+    /// Updates an existing record.
     ///
     /// Returns an error if the record does not already exist.
     ///
@@ -97,7 +115,7 @@ where
         tx.commit().map_err(Error::Backend)
     }
 
-    /// Saves a record into the collection.
+    /// Inserts or updates a record.
     ///
     /// If the record already exists, it is updated.
     /// Otherwise, a new record is inserted.
@@ -126,7 +144,7 @@ where
         tx.commit().map_err(Error::Backend)
     }
 
-    /// Removes a record from the collection by its primary key.
+    /// Removes a record by primary key.
     ///
     /// If the record exists, all associated index entries are also removed.
     ///
@@ -164,7 +182,7 @@ where
         tx.commit().map_err(Error::Backend)
     }
 
-    /// Retrieves a record from the collection by its primary key.
+    /// Retrieves a record by primary key.
     ///
     /// Returns `Ok(None)` if the record does not exist.
     pub fn get<'a>(
@@ -182,16 +200,67 @@ where
             .transpose()
     }
 
-    /// Creates a typed scan over a collection index.
+    /// Creates a typed scan over one of this collection's indexes.
     ///
-    /// Scans can be configured with:
-    /// - prefixes
-    /// - cursors
-    /// - ordering direction
-    /// - limits
+    /// The index type must have been registered with
+    /// [`CollectionBuilder::with_index`]. The returned scan is lazy and does not
+    /// access the backend until [`IndexScan::iter`](crate::scan::IndexScan::iter)
+    /// is called.
     ///
-    /// The returned scan is lazy and does not perform any database access
-    /// until iterated.
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use collette::backend::memory::InMemoryMultiStore;
+    /// # use collette::{collection, CodecError, Entity, Index, Unique};
+    /// #
+    /// # #[derive(Clone)]
+    /// # struct User {
+    /// #     id: u64,
+    /// #     email: String,
+    /// # }
+    /// #
+    /// # impl Entity for User {
+    /// #     type Key<'a> = u64;
+    /// #
+    /// #     fn key(&self) -> Self::Key<'_> {
+    /// #         self.id
+    /// #     }
+    /// #
+    /// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+    /// #         Ok(self.email.as_bytes().to_vec())
+    /// #     }
+    /// #
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    /// #         Ok(Self {
+    /// #             id: 0,
+    /// #             email: String::from_utf8_lossy(bytes).into_owned(),
+    /// #         })
+    /// #     }
+    /// # }
+    /// #
+    /// # struct ByEmail;
+    /// #
+    /// # impl Index<User> for ByEmail {
+    /// #     type Key<'a> = &'a str;
+    /// #     type Kind<'a> = Unique;
+    /// #
+    /// #     const NAME: &'static str = "by_email";
+    /// #
+    /// #     fn key(user: &User) -> Self::Key<'_> {
+    /// #         user.email.as_str()
+    /// #     }
+    /// # }
+    /// #
+    /// # let db = InMemoryMultiStore::new();
+    /// # let users = collection::<User, _>("users", db)
+    /// #     .with_index::<ByEmail>()
+    /// #     .build();
+    /// let iter = users
+    ///     .scan(ByEmail)?
+    ///     .direction(collette::Direction::LeftToRight)
+    ///     .iter()?;
+    /// # Ok::<(), collette::Error>(())
+    /// ```
     pub fn scan<'a, Idx, P>(
         &self,
         _idx: Idx,
@@ -205,6 +274,12 @@ where
     }
 }
 
+/// Builder used to register the indexes available on a [`Collection`].
+///
+/// Each call to [`with_index`](Self::with_index) adds the index type to the
+/// collection's type-level registry, allowing [`Collection::scan`] to reject
+/// unregistered indexes at compile time. Calling [`build`](Self::build)
+/// prepares the backend stores required by the collection.
 pub struct CollectionBuilder<DB, Record, Indexes>
 where
     DB: MultiStore,
@@ -223,6 +298,10 @@ where
     Record: Entity,
     Indexes: IndexRegistry<Record>,
 {
+    /// Adds a secondary index to the collection type.
+    ///
+    /// Panics if another registered index uses the same
+    /// [`Index::NAME`].
     pub fn with_index<Idx>(self) -> CollectionBuilder<DB, Record, Cons<Idx, Indexes>>
     where
         Idx: Index<Record>,
@@ -241,11 +320,68 @@ where
         }
     }
 
+    /// Finishes the builder, prepares the backend stores, and returns the typed
+    /// collection.
     pub fn build(self) -> Collection<DB, Record, Indexes> {
         Collection::new(self.name, self.db)
     }
 }
 
+/// Starts building a typed collection.
+///
+/// Pass a multistore backend value, then register the indexes that belong to
+/// the collection. Collette prepares the backend stores automatically when the
+/// builder is finished.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use collette::backend::memory::InMemoryMultiStore;
+/// # use collette::{CodecError, Entity, Index, Unique};
+/// #
+/// # #[derive(Clone)]
+/// # struct User {
+/// #     id: u64,
+/// #     email: String,
+/// # }
+/// #
+/// # impl Entity for User {
+/// #     type Key<'a> = u64;
+/// #
+/// #     fn key(&self) -> Self::Key<'_> {
+/// #         self.id
+/// #     }
+/// #
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #         Ok(self.email.as_bytes().to_vec())
+/// #     }
+/// #
+/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+/// #         Ok(Self {
+/// #             id: 0,
+/// #             email: String::from_utf8_lossy(bytes).into_owned(),
+/// #         })
+/// #     }
+/// # }
+/// #
+/// # struct ByEmail;
+/// #
+/// # impl Index<User> for ByEmail {
+/// #     type Key<'a> = &'a str;
+/// #     type Kind<'a> = Unique;
+/// #
+/// #     const NAME: &'static str = "by_email";
+/// #
+/// #     fn key(user: &User) -> Self::Key<'_> {
+/// #         user.email.as_str()
+/// #     }
+/// # }
+/// #
+/// # let db = InMemoryMultiStore::new();
+/// let users = collette::collection::<User, _>("users", db)
+///     .with_index::<ByEmail>()
+///     .build();
+/// ```
 pub fn collection<T, DB>(name: &'static str, db: DB) -> CollectionBuilder<DB, T, Nil>
 where
     T: Entity,

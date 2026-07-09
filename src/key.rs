@@ -1,3 +1,9 @@
+//! Ordered key encodings used by primary keys, index keys, and scan bounds.
+//!
+//! Implementations must encode values so that byte-wise lexicographic ordering
+//! matches the logical ordering of the Rust value. Collette provides
+//! implementations for common scalar keys, byte keys, string keys, and tuples.
+
 use crate::inline_vec::IVec;
 use crate::{impl_signed_integer_key, impl_unsigned_integer_key};
 use std::fmt::Debug;
@@ -38,14 +44,33 @@ use std::fmt::Debug;
 ///
 /// Changing a `Key` implementation changes the physical storage layout and
 /// should be treated as a migration.
+///
+/// # Examples
+///
+/// Built-in integer keys preserve numeric ordering in their encoded bytes:
+///
+/// ```
+/// use collette::Key;
+///
+/// assert!(1u64.encode().as_ref() < 2u64.encode().as_ref());
+/// assert_eq!(u64::decode(&42u64.encode()), 42);
+/// ```
 pub trait Key: Debug + Eq {
     /// The encoded size of the key.
     ///
     /// Fixed-size keys allow Collette to preallocate buffers efficiently.
     const SIZE: KeySize;
 
+    /// Owned form produced when decoding this key.
+    ///
+    /// Borrowed key types such as `&str` decode to an owned value such as
+    /// [`String`].
     type OwnedKey: Key + Sized;
 
+    /// Byte buffer returned by [`encode`](Self::encode).
+    ///
+    /// Fixed-size borrowed keys can return references, while variable-size
+    /// composite keys commonly return an inline buffer.
     type EncodedBytes<'a>: AsRef<[u8]> + 'a
     where
         Self: 'a;
@@ -83,8 +108,11 @@ pub trait Key: Debug + Eq {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Whether a key encoding always has the same byte length.
 pub enum KeySize {
+    /// The key always encodes to the given number of bytes.
     Fixed(usize),
+    /// The key encoding length depends on the value.
     Variable,
 }
 
@@ -110,8 +138,8 @@ pub fn encode_unsized_key_bytes(bytes: &[u8], out: &mut IVec) {
 /// Decodes variable-size key bytes encoded with
 /// `encode_unsized_key_bytes`.
 ///
-/// Returns an error if the encoded bytes contain invalid escape sequences or
-/// are missing the terminating marker.
+/// Panics if the encoded bytes contain invalid escape sequences or are missing
+/// the terminating marker.
 pub fn decode_unsized_key_bytes(bytes: &[u8]) -> (Vec<u8>, &[u8]) {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -450,11 +478,17 @@ where
     }
 }
 
+/// Appends a primary key to an index key.
+///
+/// This is used by [`Multi`](crate::Multi) indexes to turn a non-unique logical
+/// key into a unique physical store key.
 pub trait AppendKey<PK: Key> {
+    /// Composite key produced by appending the primary key.
     type Key<'a>: Key
     where
         PK: 'a;
 
+    /// Returns the appended key.
     fn append(self, pk: &PK) -> Self::Key<'_>;
 }
 

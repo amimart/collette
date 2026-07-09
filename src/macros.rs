@@ -1,8 +1,14 @@
+//! Macros for implementing [`Key`](crate::Key).
+
+/// Implements [`Key`](crate::Key) for an unsigned integer type.
+///
+/// Values are encoded in big-endian order so byte ordering matches numeric
+/// ordering.
 #[macro_export]
 macro_rules! impl_unsigned_integer_key {
     ($ty:ty) => {
-        impl Key for $ty {
-            const SIZE: KeySize = KeySize::Fixed(std::mem::size_of::<$ty>());
+        impl $crate::Key for $ty {
+            const SIZE: $crate::KeySize = $crate::KeySize::Fixed(std::mem::size_of::<$ty>());
 
             type OwnedKey = $ty;
 
@@ -23,11 +29,15 @@ macro_rules! impl_unsigned_integer_key {
     };
 }
 
+/// Implements [`Key`](crate::Key) for a signed integer type.
+///
+/// The encoding flips the sign bit and then stores the value as big-endian
+/// bytes, preserving signed numeric ordering in lexicographic byte order.
 #[macro_export]
 macro_rules! impl_signed_integer_key {
     ($signed:ty => $unsigned:ty) => {
-        impl Key for $signed {
-            const SIZE: KeySize = KeySize::Fixed(std::mem::size_of::<$unsigned>());
+        impl $crate::Key for $signed {
+            const SIZE: $crate::KeySize = $crate::KeySize::Fixed(std::mem::size_of::<$unsigned>());
 
             type OwnedKey = $signed;
 
@@ -50,11 +60,28 @@ macro_rules! impl_signed_integer_key {
     };
 }
 
+/// Implements [`Key`](crate::Key) for a C-like enum.
+///
+/// Each variant is mapped to an explicit integer discriminant. The chosen
+/// integer ordering becomes the enum's scan/index ordering.
+///
+/// ```
+/// #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// enum Status {
+///     Queued,
+///     Done,
+/// }
+///
+/// collette::impl_enum_key!(Status as u8 {
+///     Status::Queued => 0,
+///     Status::Done => 1,
+/// });
+/// ```
 #[macro_export]
 macro_rules! impl_enum_key {
     ($ty:ty as $int:ty { $($variant:path => $value:expr),+ $(,)? }) => {
-        impl Key for $ty {
-            const SIZE: KeySize = KeySize::Fixed(std::mem::size_of::<$int>());
+        impl $crate::Key for $ty {
+            const SIZE: $crate::KeySize = $crate::KeySize::Fixed(std::mem::size_of::<$int>());
 
             type OwnedKey = Self;
 

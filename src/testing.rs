@@ -326,6 +326,8 @@ impl SpyRegistry {
 }
 
 impl<T: Entity> IndexRegistry<T> for SpyRegistry {
+    fn store_names(_out: &mut Vec<&'static str>) {}
+
     fn update<'a, DB: MultiStoreWriteHandle>(
         _db: &mut DB,
         _pk: &T::Key<'a>,
