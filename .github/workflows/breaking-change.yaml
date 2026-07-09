@@ -7,8 +7,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
-      - unlabeled
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,31 +21,34 @@ jobs:
     name: Detect breaking changes
     runs-on: ubuntu-latest
     steps:
-      - name: Check breaking-change label
-        if: >-
-          ${{
-            contains(github.event.pull_request.labels.*.name, 'release:breaking') ||
-            contains(github.event.pull_request.labels.*.name, 'breaking-change')
-          }}
-        run: echo "Breaking-change label present; skipping breaking-change detection."
-
       - uses: actions/checkout@v7
-        if: >-
-          ${{
-            !contains(github.event.pull_request.labels.*.name, 'release:breaking') &&
-            !contains(github.event.pull_request.labels.*.name, 'breaking-change')
-          }}
         with:
           fetch-depth: 0
 
       - name: Check public API compatibility
-        if: >-
-          ${{
-            !contains(github.event.pull_request.labels.*.name, 'release:breaking') &&
-            !contains(github.event.pull_request.labels.*.name, 'breaking-change')
-          }}
+        id: api-check
+        continue-on-error: true
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha }}
           feature-group: all-features
           release-type: minor
+
+      - name: Check breaking-change commit marker
+        if: steps.api-check.outcome == 'failure'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git log --format=%B "${BASE_SHA}..${HEAD_SHA}" \
+            | grep -Eq '(^[a-z]+(\([^)]+\))?!: .+|^BREAKING[ -]CHANGE:)'; then
+            echo "Breaking public API change acknowledged by a Conventional Commit marker."
+          else
+            echo "::error::Breaking public API change detected. Add a Conventional Commit breaking marker."
+            echo "::error::Use ! in the commit header or add a BREAKING CHANGE: footer."
+            exit 1
+          fi
+
+      - name: Confirm public API compatibility
+        if: steps.api-check.outcome == 'success'
+        run: echo "No breaking public API change detected."
