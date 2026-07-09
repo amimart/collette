@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an API, behavior, backend, or capability improvement.
+title: "✨ "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What problem would this solve, or what would it make easier?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the API, behavior, or workflow you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other designs or workarounds you considered.
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Compatibility concerns, examples, or follow-up ideas.
+    validations:
+      required: false
