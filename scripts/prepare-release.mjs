@@ -5,7 +5,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const changelogPath = "CHANGELOG.md";
 const cargoTomlPath = "Cargo.toml";
-const cargoLockPath = "Cargo.lock";
 const cleanNotesPath = "release-notes-clean.md";
 
 function run(command, args, options = {}) {
@@ -48,17 +47,6 @@ function currentVersion() {
   }
 
   return version;
-}
-
-function packageName() {
-  const manifest = readFileSync(cargoTomlPath, "utf8");
-  const name = manifest.match(/^name = "([^"]+)"$/m)?.[1];
-
-  if (!name) {
-    throw new Error("Could not read package name from Cargo.toml");
-  }
-
-  return name;
 }
 
 function latestTag() {
@@ -152,6 +140,16 @@ function incrementVersion(version, bump) {
   return `${major}.${minor}.${patch}`;
 }
 
+function tagVersion(tag) {
+  const version = tag.replace(/^v/, "");
+
+  if (!/^\d+\.\d+\.\d+(?:-.+)?$/.test(version)) {
+    throw new Error(`Unsupported release tag: ${tag}`);
+  }
+
+  return version;
+}
+
 function cleanReleaseNotes(notes) {
   return notes
     .replace(/^## What's Changed\s*/m, "")
@@ -166,36 +164,6 @@ function cleanReleaseNotes(notes) {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function updateCargoToml(version) {
-  const manifest = readFileSync(cargoTomlPath, "utf8");
-  const updated = manifest.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
-
-  if (manifest === updated) {
-    throw new Error("Cargo.toml version was not updated");
-  }
-
-  writeFileSync(cargoTomlPath, updated);
-}
-
-function updateCargoLock(version) {
-  if (!existsSync(cargoLockPath)) {
-    return;
-  }
-
-  const name = packageName();
-  const lockfile = readFileSync(cargoLockPath, "utf8");
-  const packageBlock = new RegExp(
-    `(\\[\\[package\\]\\]\\nname = "${name}"\\nversion = ")[^"]+(")`,
-  );
-  const updated = lockfile.replace(packageBlock, `$1${version}$2`);
-
-  if (lockfile === updated) {
-    throw new Error(`Could not update ${name} package version in ${cargoLockPath}`);
-  }
-
-  writeFileSync(cargoLockPath, updated);
 }
 
 function updateChangelog(version, notes) {
@@ -222,18 +190,32 @@ function plan() {
   const version = currentVersion();
   const bump = strongestBump(parseCommits(previousTag));
 
-  if (!bump) {
-    writeOutput({ release_required: "false" });
+  if (!previousTag) {
+    writeOutput({
+      previous_tag: "",
+      version,
+      tag: `v${version}`,
+      bump: bump ?? "initial",
+    });
     return;
   }
 
-  const nextVersion = incrementVersion(version, bump);
+  if (!bump) {
+    throw new Error("No feat, fix, perf, or breaking changes found since the latest release tag");
+  }
+
+  const expectedVersion = incrementVersion(tagVersion(previousTag), bump);
+
+  if (version !== expectedVersion) {
+    throw new Error(
+      `Cargo.toml version is ${version}, but Conventional Commits require ${expectedVersion}`,
+    );
+  }
 
   writeOutput({
-    release_required: "true",
     previous_tag: previousTag,
-    version: nextVersion,
-    tag: `v${nextVersion}`,
+    version,
+    tag: `v${version}`,
     bump,
   });
 }
@@ -251,8 +233,6 @@ function apply(notesFile) {
 
   const notes = cleanReleaseNotes(readFileSync(notesFile, "utf8"));
 
-  updateCargoToml(version);
-  updateCargoLock(version);
   updateChangelog(version, notes);
   writeFileSync(cleanNotesPath, `${notes}\n`);
 }
