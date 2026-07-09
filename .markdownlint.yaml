@@ -4,3 +4,5 @@ default: true
 MD013: false
 # Allow inline HTML (useful for badges, <details>, etc.)
 MD033: false
+# Pull request templates intentionally start at section level
+MD041: false

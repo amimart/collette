@@ -1,5 +1,3 @@
-<!-- markdownlint-disable MD041 -->
-
 ## 💡 Purpose
 
 <!-- What does this PR add, fix, or change? Why? -->
