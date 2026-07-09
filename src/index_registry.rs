@@ -12,6 +12,8 @@ pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
 /// IndexRegistry is a recursive HList trait to allow defining multiple indexes as generic types.
 pub trait IndexRegistry<T: Entity> {
+    fn store_names(out: &mut Vec<&'static str>);
+
     fn update<'a, DB: MultiStoreWriteHandle>(
         db: &mut DB,
         pk: &T::Key<'a>,
@@ -32,6 +34,8 @@ impl<T> IndexRegistry<T> for Nil
 where
     T: Entity,
 {
+    fn store_names(_out: &mut Vec<&'static str>) {}
+
     fn update<'a, DB: MultiStoreWriteHandle>(
         _db: &mut DB,
         _pk: &T::Key<'a>,
@@ -61,6 +65,11 @@ where
     Tail: IndexRegistry<T>,
     for<'ik, 'pk> Head::Kind<'ik>: IndexKind<Head::Key<'ik>, T::Key<'pk>>,
 {
+    fn store_names(out: &mut Vec<&'static str>) {
+        out.push(Head::NAME);
+        Tail::store_names(out);
+    }
+
     fn update<'a, DB: MultiStoreWriteHandle>(
         db: &mut DB,
         pk: &T::Key<'a>,
