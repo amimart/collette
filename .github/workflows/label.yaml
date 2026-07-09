@@ -59,6 +59,10 @@ jobs:
               return messages.some((message) => pattern.test(message));
             };
 
+            const hasBreakingMarker = commits.some((commit) =>
+              /(^[a-z]+(?:\([^)]+\))?!:\s|^BREAKING[ -]CHANGE:)/m.test(commit.commit.message)
+            );
+
             const labels = new Set(pr.labels.map((label) => label.name));
             const add = [];
 
@@ -70,6 +74,7 @@ jobs:
 
             addLabel("bug", hasType("fix"));
             addLabel("enhancement", hasType("feat"));
+            addLabel("breaking-change", hasBreakingMarker);
 
             if (add.length > 0) {
               await github.rest.issues.addLabels({

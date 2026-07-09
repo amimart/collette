@@ -72,6 +72,7 @@ impact:
 - `fix:` and `perf:` trigger patch releases.
 - `feat:` triggers minor releases.
 - `!` markers and `BREAKING CHANGE:` footers mark breaking releases.
+  They also apply the `breaking-change` label.
 - `docs:`, `test:`, `refactor:`, `ci:`, and `chore:` do not trigger releases
   by themselves.
 
