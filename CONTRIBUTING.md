@@ -43,7 +43,6 @@ the generated changelog and act as lightweight visual categories.
 
 | Emoji | Category | Use for |
 | --- | --- | --- |
-| `💥` | Breaking | Breaking API or behavior changes |
 | `✨` | Feature | New user-facing capabilities |
 | `🐛` | Fix | Bug fixes |
 | `⚡` | Performance | Performance improvements |
@@ -70,6 +69,12 @@ opening or merging a pull request:
 - `release:skip` or `skip-changelog`
 
 Use `release:skip` for changes that should not appear in the changelog.
+
+The `bug` and `enhancement` labels are applied automatically from Conventional
+Commit signals in the pull request title or commits:
+
+- `fix:` applies `bug`
+- `feat:` applies `enhancement`
 
 ## Commits
 
