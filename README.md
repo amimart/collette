@@ -1,34 +1,21 @@
 # Collette
 
+ℹ️ **coll**_ection_ + **ette** (i.e. meaning lightweight)
+
 ![Status](https://img.shields.io/badge/status-🚧%20WIP-yellow?style=for-the-badge)
 [![lint](https://img.shields.io/github/actions/workflow/status/amimart/collette/lint.yaml?label=lint&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/lint.yaml)
 [![build](https://img.shields.io/github/actions/workflow/status/amimart/collette/build.yaml?label=build&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/build.yaml)
 [![test](https://img.shields.io/github/actions/workflow/status/amimart/collette/test.yaml?label=test&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/test.yaml)
 
-Collette - Typed collections, indexes and scans over KV stores
+Typed collections, maintained indexes, and ordered scans over embedded key-value stores. Collette is:
 
-## Purpose
+- **Lightweight:** Collette adds structure to ordered KV storage through zero-cost abstractions.
+- **Typed:** define Rust entities, primary keys, and indexes with compile-time checks.
+- **Backend-agnostic:** storage is provided by pluggable multistore backends, while application code works with collections and scans.
 
-Collette aims to fill the gap between low-level embedded key-value stores and heavier SQL/ORM-based solutions.
+Collette is not an ORM, query planner, SQL layer, or database server.
 
-Collette is designed as a lightweight typed storage layer on top of ordered KV stores, focused on:
-
-* typed records;
-* indexes;
-* prefix range scans;
-* cursor-based pagination;
-* zero-copy/zero-alloc friendly;
-* multi-backend support;
-
-The goal is not to build:
-
-* an ORM;
-* a query planner;
-* or a database server;
-
-## Status
-
-🚧 Under active Design, you'll find below some first sketches:
+>🚧 **WARNING**: Collette is not mature enough to be considered production-grade. Its API may change without notice. But feedbacks are welcomed 😉
 
 ### Collection definition
 
