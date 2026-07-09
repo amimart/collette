@@ -1,0 +1,25 @@
+name: General issue
+description: Open a discussion, question, cleanup, or tracking issue.
+title: ""
+body:
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic
+      description: What should this issue track or discuss?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Add context, constraints, links, or examples.
+    validations:
+      required: false
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What would make this issue resolved?
+    validations:
+      required: false

@@ -1,0 +1,81 @@
+name: Label
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  standard-labeler:
+    name: Standard labeler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label from changed files
+        uses: actions/labeler@v6
+        with:
+          sync-labels: false
+
+  conventional-labels:
+    name: Conventional labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label from Conventional Commits
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const issue_number = pr.number;
+
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              {
+                owner,
+                repo,
+                pull_number: issue_number,
+                per_page: 100,
+              },
+            );
+
+            const messages = [
+              pr.title,
+              ...commits.map((commit) => commit.commit.message),
+            ];
+
+            const hasType = (type) => {
+              const pattern = new RegExp(`^${type}(?:\\([^)]+\\))?!?:\\s`, "m");
+              return messages.some((message) => pattern.test(message));
+            };
+
+            const labels = new Set(pr.labels.map((label) => label.name));
+            const add = [];
+
+            const addLabel = (label, shouldApply) => {
+              if (shouldApply && !labels.has(label)) {
+                add.push(label);
+              }
+            };
+
+            addLabel("bug", hasType("fix"));
+            addLabel("enhancement", hasType("feat"));
+
+            if (add.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: add,
+              });
+            }

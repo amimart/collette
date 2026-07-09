@@ -1,0 +1,25 @@
+changelog:
+  exclude:
+    labels:
+      - release:skip
+      - skip-changelog
+  categories:
+    - title: Breaking Changes
+      labels:
+        - release:breaking
+        - breaking-change
+    - title: Features
+      labels:
+        - release:feature
+        - enhancement
+    - title: Bug Fixes
+      labels:
+        - release:fix
+        - bug
+    - title: Security
+      labels:
+        - release:security
+        - security
+    - title: Other Changes
+      labels:
+        - "*"

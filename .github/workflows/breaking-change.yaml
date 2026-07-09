@@ -1,0 +1,54 @@
+name: Breaking Change
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  breaking-change:
+    name: Detect breaking changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check public API compatibility
+        id: api-check
+        continue-on-error: true
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          baseline-rev: ${{ github.event.pull_request.base.sha }}
+          feature-group: all-features
+          release-type: minor
+
+      - name: Check breaking-change commit marker
+        if: steps.api-check.outcome == 'failure'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git log --format=%B "${BASE_SHA}..${HEAD_SHA}" \
+            | grep -Eq '(^[a-z]+(\([^)]+\))?!: .+|^BREAKING[ -]CHANGE:)'; then
+            echo "Breaking public API change acknowledged by a Conventional Commit marker."
+          else
+            echo "::error::Breaking public API change detected. Add a Conventional Commit breaking marker."
+            echo "::error::Use ! in the commit header or add a BREAKING CHANGE: footer."
+            exit 1
+          fi
+
+      - name: Confirm public API compatibility
+        if: steps.api-check.outcome == 'success'
+        run: echo "No breaking public API change detected."

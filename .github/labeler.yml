@@ -1,0 +1,14 @@
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - .commitlintrc.yaml
+          - .markdownlint.yaml
+          - .yamllint.yaml
+          - Makefile
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - LICENSE

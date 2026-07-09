@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Compute and validate the release without pushing changes
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+env:
+  RELEASE_PRE_1_0_BREAKING_AS: minor
+
+jobs:
+  guard:
+    name: Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure main branch
+        if: github.ref_name != 'main'
+        run: |
+          echo "Releases must be run from main."
+          exit 1
+
+  build:
+    name: Build
+    needs: guard
+    uses: ./.github/workflows/build.yaml
+
+  test:
+    name: Test
+    needs: guard
+    uses: ./.github/workflows/test.yaml
+
+  lint:
+    name: Lint
+    needs: guard
+    uses: ./.github/workflows/lint.yaml
+
+  audit:
+    name: Audit
+    needs: guard
+    uses: ./.github/workflows/audit.yaml
+
+  release:
+    name: Release
+    needs:
+      - build
+      - test
+      - lint
+      - audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Plan release
+        id: plan
+        run: node scripts/prepare-release.mjs plan
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_TAG: ${{ steps.plan.outputs.previous_tag }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          args=(
+            -f "tag_name=${TAG}"
+            -f "target_commitish=main"
+          )
+
+          if [ -n "${PREVIOUS_TAG}" ]; then
+            args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            "${args[@]}" \
+            --jq .body > release-notes.md
+
+      - name: Update release files
+        env:
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        run: node scripts/prepare-release.mjs apply release-notes.md
+
+      - name: Commit release
+        if: inputs.dry_run == false
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(release): ${TAG}"
+
+      - name: Tag release
+        if: inputs.dry_run == false
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: git tag -a "${TAG}" -m "${TAG}"
+
+      - name: Push release commit and tag
+        if: inputs.dry_run == false
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          git push origin HEAD:main
+          git push origin "${TAG}"
+
+      - name: Create GitHub release
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: gh release create "${TAG}" --title "${TAG}" --notes-file release-notes-clean.md
