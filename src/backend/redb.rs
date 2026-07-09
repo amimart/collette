@@ -1,4 +1,7 @@
-//! redb-backed [`MultiStore`](crate::store::MultiStore) implementation.
+//! Persistent [`redb`](https://crates.io/crates/redb)-backed
+//! [`MultiStore`] implementation.
+//!
+//! Enable the `redb` feature to use this backend.
 
 use crate::error::BackendError;
 use crate::scan::Direction;
@@ -27,24 +30,28 @@ type PreparedTables = BTreeMap<TableKey, Arc<str>>;
 type SharedPreparedTables = Arc<RwLock<Arc<PreparedTables>>>;
 
 #[derive(Clone)]
+/// Persistent Collette backend backed by a redb database.
 pub struct RedbMultiStore {
     db: Arc<Database>,
     tables: SharedPreparedTables,
 }
 
 impl RedbMultiStore {
+    /// Creates a new redb database at `path`.
     pub fn create(path: impl AsRef<Path>) -> Result<Self, BackendError> {
         Ok(Self::from_database(
             Database::create(path).map_err(BackendError::new)?,
         ))
     }
 
+    /// Opens an existing redb database at `path`.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, BackendError> {
         Ok(Self::from_database(
             Database::open(path).map_err(BackendError::new)?,
         ))
     }
 
+    /// Wraps an existing redb [`Database`].
     pub fn from_database(db: Database) -> Self {
         Self {
             db: Arc::new(db),
@@ -110,6 +117,7 @@ impl MultiStore for RedbMultiStore {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbReadHandle {
     namespace: &'static str,
     tables: Arc<PreparedTables>,
@@ -130,6 +138,7 @@ impl MultiStoreReadHandle for RedbReadHandle {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbWriteHandle {
     namespace: &'static str,
     tables: Arc<PreparedTables>,
@@ -154,6 +163,7 @@ impl MultiStoreWriteHandle for RedbWriteHandle {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbReadStore {
     table: ReadTable,
 }
@@ -185,6 +195,7 @@ impl ReadKVStore for RedbReadStore {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbWriteStore<'a> {
     table: WriteTable<'a>,
 }
@@ -238,6 +249,7 @@ impl<'txn> ReadKVStore for RedbWriteStore<'txn> {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbReadIterator {
     inner: DirectedRange<'static>,
 }
@@ -250,6 +262,7 @@ impl Iterator for RedbReadIterator {
     }
 }
 
+#[doc(hidden)]
 pub struct RedbWriteIterator<'txn> {
     inner: DirectedRange<'static>,
     _table: WriteTable<'txn>,
