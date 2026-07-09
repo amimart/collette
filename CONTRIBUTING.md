@@ -83,27 +83,23 @@ change.
 
 ## Pull Request Labels
 
-Release notes are grouped by ordinary pull request labels:
+Pull request labels are computed by CI from commits and changed files. Before
+merging, check that the labels match the intent of the pull request.
 
-- `breaking-change`
-- `enhancement`
-- `bug`
-- `security`
-- `documentation`
-- `dependencies`
-- `ci`
+Labels help the changelog land in the right section. They do not request or
+override a version bump; fix the commits instead.
 
-Use labels to help the changelog land in the right section. Do not use labels to
-ask for a version bump; fix the commits instead.
+Examples of labels include:
 
-The `bug` and `enhancement` labels are applied automatically from Conventional
-Commit signals in the pull request title or commits:
+- `enhancement` for feature work
+- `bug` for fixes
+- `security` for security hardening or fixes
+- `documentation` for documentation-only changes
+- `dependencies` for dependency updates
+- `ci` for CI, build, and release automation
+- `breaking-change` for breaking API changes
 
-- `fix:` applies `bug`
-- `feat:` applies `enhancement`
-
-The `ci` and `documentation` labels are applied automatically from changed
-files.
+This list is not exhaustive. Prefer the label set that best reflects the PR.
 
 ## Commits
 
