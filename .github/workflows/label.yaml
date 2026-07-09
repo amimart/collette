@@ -11,19 +11,28 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: label-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  standard-labeler:
+    name: Standard labeler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label from changed files
+        uses: actions/labeler@v6
+        with:
+          sync-labels: false
+
   conventional-labels:
     name: Conventional labels
     runs-on: ubuntu-latest
     steps:
       - name: Label from Conventional Commits
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;

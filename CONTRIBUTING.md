@@ -81,6 +81,9 @@ Commit signals in the pull request title or commits:
 - `fix:` applies `bug`
 - `feat:` applies `enhancement`
 
+Path-based labels such as `area:ci`, `area:docs`, `area:crate`,
+`area:backend`, and `area:tests` are applied automatically from changed files.
+
 ## Commits
 
 Commit messages must follow Conventional Commits:
