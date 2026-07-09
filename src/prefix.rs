@@ -1,8 +1,15 @@
+//! Prefix bounds for ordered composite keys.
+//!
+//! Prefix scans turn an encoded key prefix into the smallest range that contains
+//! every key beginning with those bytes.
+
 use crate::bounds::IntoScanBounds;
 use crate::key::Key;
 use std::ops::Bound;
 
+/// A typed value that can be used as a scan prefix.
 pub trait Prefix {
+    /// Encodes this prefix using the same ordered bytes as a full key.
     fn encode_prefix(&self) -> Vec<u8>;
 }
 
@@ -58,11 +65,18 @@ where
     }
 }
 
+/// Scan endpoint that can be either a prefix or a complete key.
+///
+/// This is useful when a range starts at a prefix boundary and ends at a precise
+/// key, or the reverse.
 pub enum PrefixOrKey<K: Key + Prefixable<P>, P: Prefix> {
+    /// Prefix endpoint.
     Prefix(P),
+    /// Full-key endpoint.
     Key(K),
 }
 
+/// Marker trait proving that `P` is a valid prefix for key `Self`.
 pub trait Prefixable<P>
 where
     P: Prefix,
