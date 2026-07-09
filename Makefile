@@ -31,7 +31,7 @@ test: test-rust ## Run all tests
 .PHONY: test-rust
 test-rust: ## Run Rust tests
 	@printf "$(COLOR_GREEN)$(BOLD)🧪 Running tests...$(COLOR_RESET)\n"
-	cargo test --all-features
+	cargo test --doc --all-features
 
 ## Lint:
 .PHONY: lint
