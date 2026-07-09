@@ -1,4 +1,4 @@
-area:ci:
+ci:
   - changed-files:
       - any-glob-to-any-file:
           - .github/**
@@ -7,27 +7,8 @@ area:ci:
           - .yamllint.yaml
           - Makefile
 
-area:docs:
+documentation:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.md"
           - LICENSE
-
-area:crate:
-  - changed-files:
-      - any-glob-to-any-file:
-          - Cargo.toml
-          - Cargo.lock
-          - rust-toolchain.toml
-
-area:backend:
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/backend/**
-          - src/store.rs
-
-area:tests:
-  - changed-files:
-      - any-glob-to-any-file:
-          - tests/**
-          - src/**/tests.rs

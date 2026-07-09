@@ -69,8 +69,7 @@ opening or merging a pull request:
 - `release:breaking`
 - `release:feature`
 - `release:fix`
-- `release:docs`
-- `dependencies`
+- `release:security`
 - `release:skip` or `skip-changelog`
 
 Use `release:skip` for changes that should not appear in the changelog.
@@ -81,8 +80,8 @@ Commit signals in the pull request title or commits:
 - `fix:` applies `bug`
 - `feat:` applies `enhancement`
 
-Path-based labels such as `area:ci`, `area:docs`, `area:crate`,
-`area:backend`, and `area:tests` are applied automatically from changed files.
+The `ci` and `documentation` labels are applied automatically from changed
+files.
 
 ## Commits
 

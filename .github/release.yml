@@ -16,13 +16,10 @@ changelog:
       labels:
         - release:fix
         - bug
-    - title: Documentation
+    - title: Security
       labels:
-        - release:docs
-        - documentation
-    - title: Dependencies
-      labels:
-        - dependencies
+        - release:security
+        - security
     - title: Other Changes
       labels:
         - "*"
