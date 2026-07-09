@@ -1,33 +1,17 @@
-# Pull Request
+<!-- markdownlint-disable MD041 -->
 
-## Summary
+## 💡 Purpose
 
-<!-- What changed, and why? Keep this changelog-friendly. -->
+<!-- What does this PR add, fix, or change? Why? -->
 
-## Changes
+## ⚙️ Details
 
-<!-- A short list is enough. -->
+<!-- Describe the implementation shape, important design choices, and tradeoffs. -->
 
-- Change summary here
+## 🧪 Testing
 
-## Release Notes
+<!-- How was this validated? Mention tests added, changed, or intentionally skipped. -->
 
-<!-- Pick the closest one, and add the matching label before merge. -->
+## 📝 Notes
 
-- [ ] Breaking change (`release:breaking`)
-- [ ] Feature (`release:feature` or `enhancement`)
-- [ ] Fix (`release:fix` or `bug`)
-- [ ] Security (`release:security` or `security`)
-- [ ] Skip changelog (`release:skip` or `skip-changelog`)
-- [ ] No release impact
-
-## Compatibility
-
-<!-- Mention API changes, behavior changes, migrations, or why none apply. -->
-
-## Checks
-
-- [ ] Tests added or updated, if needed
-- [ ] `cargo fmt --check`
-- [ ] `cargo clippy -- -D warnings`
-- [ ] `cargo test`
+<!-- Optional follow-ups, release labels, compatibility notes, or reviewer context. -->
