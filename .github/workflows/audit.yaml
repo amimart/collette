@@ -1,13 +1,14 @@
 name: Audit
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

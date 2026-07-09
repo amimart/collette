@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const changelogPath = "CHANGELOG.md";
 const cargoTomlPath = "Cargo.toml";
+const cargoLockPath = "Cargo.lock";
 const cleanNotesPath = "release-notes-clean.md";
 
 function run(command, args, options = {}) {
@@ -47,6 +48,17 @@ function currentVersion() {
   }
 
   return version;
+}
+
+function packageName() {
+  const manifest = readFileSync(cargoTomlPath, "utf8");
+  const name = manifest.match(/^name = "([^"]+)"$/m)?.[1];
+
+  if (!name) {
+    throw new Error("Could not read package name from Cargo.toml");
+  }
+
+  return name;
 }
 
 function latestTag() {
@@ -167,6 +179,25 @@ function updateCargoToml(version) {
   writeFileSync(cargoTomlPath, updated);
 }
 
+function updateCargoLock(version) {
+  if (!existsSync(cargoLockPath)) {
+    return;
+  }
+
+  const name = packageName();
+  const lockfile = readFileSync(cargoLockPath, "utf8");
+  const packageBlock = new RegExp(
+    `(\\[\\[package\\]\\]\\nname = "${name}"\\nversion = ")[^"]+(")`,
+  );
+  const updated = lockfile.replace(packageBlock, `$1${version}$2`);
+
+  if (lockfile === updated) {
+    throw new Error(`Could not update ${name} package version in ${cargoLockPath}`);
+  }
+
+  writeFileSync(cargoLockPath, updated);
+}
+
 function updateChangelog(version, notes) {
   const date = new Date().toISOString().slice(0, 10);
   const heading = `## v${version} - ${date}`;
@@ -221,6 +252,7 @@ function apply(notesFile) {
   const notes = cleanReleaseNotes(readFileSync(notesFile, "utf8"));
 
   updateCargoToml(version);
+  updateCargoLock(version);
   updateChangelog(version, notes);
   writeFileSync(cleanNotesPath, `${notes}\n`);
 }

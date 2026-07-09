@@ -18,8 +18,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  release:
-    name: Release
+  guard:
+    name: Guard
     runs-on: ubuntu-latest
     steps:
       - name: Ensure main branch
@@ -28,16 +28,39 @@ jobs:
           echo "Releases must be run from main."
           exit 1
 
+  build:
+    name: Build
+    needs: guard
+    uses: ./.github/workflows/build.yaml
+
+  test:
+    name: Test
+    needs: guard
+    uses: ./.github/workflows/test.yaml
+
+  lint:
+    name: Lint
+    needs: guard
+    uses: ./.github/workflows/lint.yaml
+
+  audit:
+    name: Audit
+    needs: guard
+    uses: ./.github/workflows/audit.yaml
+
+  release:
+    name: Release
+    needs:
+      - build
+      - test
+      - lint
+      - audit
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: main
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@v2
 
       - name: Plan release
         id: plan
@@ -72,26 +95,6 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.plan.outputs.version }}
         run: node scripts/prepare-release.mjs apply release-notes.md
-
-      - name: Update lockfile
-        if: steps.plan.outputs.release_required == 'true'
-        run: cargo check
-
-      - name: Check formatting
-        if: steps.plan.outputs.release_required == 'true'
-        run: cargo fmt --check
-
-      - name: Clippy
-        if: steps.plan.outputs.release_required == 'true'
-        run: cargo clippy -- -D warnings
-
-      - name: Test
-        if: steps.plan.outputs.release_required == 'true'
-        run: cargo test
-
-      - name: Package dry run
-        if: steps.plan.outputs.release_required == 'true'
-        run: cargo publish --dry-run
 
       - name: Commit release
         if: steps.plan.outputs.release_required == 'true' && inputs.dry_run == false

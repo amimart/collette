@@ -1,13 +1,14 @@
 name: Build
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

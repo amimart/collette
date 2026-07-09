@@ -37,8 +37,9 @@ Pull requests can be grouped with these labels:
 ## Cutting a Release
 
 1. Run the `Release` workflow manually.
-2. Keep `dry_run` enabled first to validate the computed release.
-3. Run it again with `dry_run` disabled.
+2. The workflow runs the existing build, test, lint, and audit workflows.
+3. Keep `dry_run` enabled first to validate the computed release.
+4. Run it again with `dry_run` disabled.
 
 The workflow commits `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md` back to
 `main`, creates a `vX.Y.Z` tag, pushes the tag, and creates the GitHub Release.
