@@ -55,4 +55,10 @@ Conventional Commits.
 The workflow commits `CHANGELOG.md` back to `main`, creates a `vX.Y.Z` tag,
 pushes the tag, and creates the GitHub Release.
 
-Publishing to crates.io is intentionally handled by a separate workflow.
+The pushed tag triggers the `Publish` workflow. That workflow checks that the
+tag version matches `Cargo.toml`, then publishes the crate to crates.io.
+
+## Publishing Setup
+
+Create a crates.io API token with publish permission for the crate, then add it
+to the repository secrets as `CARGO_REGISTRY_TOKEN`.
