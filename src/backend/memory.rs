@@ -1,3 +1,9 @@
+//! In-memory [`MultiStore`] backend.
+//!
+//! This backend is useful for tests, examples, and ephemeral in-process state.
+//! Reads see stable snapshots, while writes are staged and published atomically
+//! on commit.
+
 use crate::error::BackendError;
 use crate::scan::Direction;
 use crate::store::{
@@ -9,19 +15,31 @@ use std::ops::RangeBounds;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::vec::IntoIter;
 
+/// In-process ordered key-value backend.
+///
+/// Data is kept in memory and lost when the value is dropped.
 pub struct InMemoryMultiStore {
     stores: SharedNamespaces,
 }
 
+#[doc(hidden)]
 pub type SharedNamespaces = Arc<RwLock<Namespaces>>;
+#[doc(hidden)]
 pub type Namespaces = BTreeMap<&'static str, Arc<NamespacedState>>;
+#[doc(hidden)]
 pub type NamespacedStores = BTreeMap<&'static str, Arc<KVStore>>;
+#[doc(hidden)]
 pub type StagedStores = BTreeMap<&'static str, KVStore>;
+#[doc(hidden)]
 pub type KVStore = BTreeMap<Vec<u8>, Vec<u8>>;
+#[doc(hidden)]
 pub type ScanItem = (Vec<u8>, Vec<u8>);
+#[doc(hidden)]
 pub type ScanResult = Result<ScanItem, BackendError>;
+#[doc(hidden)]
 pub type ScanResults = Vec<ScanResult>;
 
+#[doc(hidden)]
 pub struct NamespacedState {
     stores: RwLock<Arc<NamespacedStores>>,
     writer: Arc<WriterGate>,
@@ -79,6 +97,7 @@ impl Default for InMemoryMultiStore {
 }
 
 impl InMemoryMultiStore {
+    /// Creates an empty in-memory backend.
     pub fn new() -> Self {
         Self {
             stores: Arc::from(RwLock::from(BTreeMap::new())),
@@ -95,13 +114,31 @@ impl MultiStore for InMemoryMultiStore {
         namespace: &'static str,
         stores: impl IntoIterator<Item = &'static str>,
     ) -> Result<(), BackendError> {
-        let mut nstores = NamespacedStores::new();
-        stores.into_iter().for_each(|store| {
-            nstores.insert(store, Arc::new(KVStore::new()));
-        });
-
+        let stores = stores.into_iter().collect::<Vec<_>>();
         let mut db = self.stores.write().unwrap();
-        db.insert(namespace, Arc::new(NamespacedState::new(nstores)));
+
+        if let Some(state) = db.get(namespace) {
+            let current = state.stores.read().unwrap().clone();
+            let next = stores
+                .into_iter()
+                .map(|store| {
+                    (
+                        store,
+                        current
+                            .get(store)
+                            .cloned()
+                            .unwrap_or_else(|| Arc::new(KVStore::new())),
+                    )
+                })
+                .collect();
+            *state.stores.write().unwrap() = Arc::new(next);
+        } else {
+            let nstores = stores
+                .into_iter()
+                .map(|store| (store, Arc::new(KVStore::new())))
+                .collect();
+            db.insert(namespace, Arc::new(NamespacedState::new(nstores)));
+        }
 
         Ok(())
     }
@@ -132,6 +169,7 @@ impl MultiStore for InMemoryMultiStore {
     }
 }
 
+#[doc(hidden)]
 pub struct InMemoryReadHandle {
     stores: Arc<NamespacedStores>,
 }
@@ -146,6 +184,7 @@ impl MultiStoreReadHandle for InMemoryReadHandle {
     }
 }
 
+#[doc(hidden)]
 pub struct InMemoryReadStore {
     store: Arc<KVStore>,
 }
@@ -180,6 +219,7 @@ impl ReadKVStore for InMemoryReadStore {
     }
 }
 
+#[doc(hidden)]
 pub struct InMemoryWriteHandle {
     namespace: Arc<NamespacedState>,
     staged: StagedStores,
@@ -208,6 +248,7 @@ impl MultiStoreWriteHandle for InMemoryWriteHandle {
     }
 }
 
+#[doc(hidden)]
 pub struct InMemoryWriteStore<'a> {
     store: &'a mut KVStore,
 }
