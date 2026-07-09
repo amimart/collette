@@ -1,56 +1,96 @@
+//! Storage adapter traits implemented by multistore backends.
+//!
+//! A [`MultiStore`](crate::store::MultiStore) exposes named namespaces, each
+//! containing several ordered key-value stores. Collections use one primary
+//! store plus one store per secondary index.
+//!
+//! These traits are backend integration points, not the normal application API.
+//! End users should create a [`Collection`](crate::Collection) with a [`MultiStore`](crate::store::MultiStore)
+//! implementation and then call collection methods. This API shall never be used directly.
+
 use crate::error::BackendError;
 use crate::scan::Direction;
 use std::ops::RangeBounds;
 
+/// Adapter contract for a backend that can expose several ordered KV stores.
+///
+/// Implement this trait to make Collette work with a new key-value store. In
+/// application code, prefer the collection API; `prepare`, `read`, and `write`
+/// are called by Collette.
 pub trait MultiStore {
+    /// Read-only transaction or snapshot handle.
     type ReadHandle: MultiStoreReadHandle;
+    /// Write transaction handle.
     type WriteHandle: MultiStoreWriteHandle;
 
-    /// Initializes the given stores for this namespace, if not existing already. Using a non-initialized
-    /// namespace or store will panic.
+    /// Initializes the given stores for a namespace.
+    ///
+    /// This is called automatically when a collection is built. Backend
+    /// implementations should make it safe to call repeatedly for the same
+    /// namespace and stores.
     fn prepare(
         &self,
         namespace: &'static str,
         stores: impl IntoIterator<Item = &'static str>,
     ) -> Result<(), BackendError>;
 
+    /// Opens a read-only handle for the namespace.
+    ///
+    /// Collette calls this while serving collection reads and scans.
     fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, BackendError>;
 
-    /// Opens a MultiStoreWriteHandle for the given namespace. All writes to stores opened from this
-    /// handle will be atomic when commit() is called.
+    /// Opens a write handle for the namespace.
+    ///
+    /// Collette calls this for collection mutations. All writes to stores
+    /// opened from this handle become visible atomically when
+    /// [`commit`](MultiStoreWriteHandle::commit) succeeds.
     fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, BackendError>;
 }
 
+/// Read-only view of the stores in one namespace.
 pub trait MultiStoreReadHandle {
+    /// Store type returned by this read handle.
     type Store: ReadKVStore;
 
+    /// Opens one prepared store by name.
     fn open_store(&self, name: &'static str) -> Result<Self::Store, BackendError>;
 }
 
-/// A MultiStoreWriteHandle provides atomic writes across all stores opened from it.
+/// Write transaction across all stores opened from one namespace.
 pub trait MultiStoreWriteHandle {
+    /// Mutable store type returned by this write handle.
     type Store<'a>: ReadWriteKVStore<'a>
     where
         Self: 'a;
 
+    /// Opens one prepared store by name.
     fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, BackendError>;
 
+    /// Commits all changes made through this handle.
     fn commit(self) -> Result<(), BackendError>;
 }
 
+/// Store that can be read from and written to in the same transaction.
 pub trait ReadWriteKVStore<'a>: ReadKVStore + WriteKVStore<'a> {}
 
+/// Mutable ordered key-value store.
 pub trait WriteKVStore<'a> {
+    /// Sets or replaces a key-value pair.
     fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), BackendError>;
 
+    /// Removes a key-value pair if it exists.
     fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), BackendError>;
 }
 
+/// Read-only ordered key-value store.
 pub trait ReadKVStore {
+    /// Iterator returned by [`scan`](Self::scan).
     type Iter: Iterator<Item = Result<(Vec<u8>, Vec<u8>), BackendError>>;
 
+    /// Gets a value by exact key.
     fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError>;
 
+    /// Scans key-value pairs in byte-key order inside `range`.
     fn scan(
         self,
         range: impl RangeBounds<Vec<u8>>,
