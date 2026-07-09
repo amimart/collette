@@ -1,0 +1,53 @@
+name: SemVer
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  semver:
+    name: Breaking changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check breaking-change label
+        if: >-
+          ${{
+            contains(github.event.pull_request.labels.*.name, 'release:breaking') ||
+            contains(github.event.pull_request.labels.*.name, 'breaking-change')
+          }}
+        run: echo "Breaking-change label present; skipping SemVer compatibility gate."
+
+      - uses: actions/checkout@v7
+        if: >-
+          ${{
+            !contains(github.event.pull_request.labels.*.name, 'release:breaking') &&
+            !contains(github.event.pull_request.labels.*.name, 'breaking-change')
+          }}
+        with:
+          fetch-depth: 0
+
+      - name: Check public API compatibility
+        if: >-
+          ${{
+            !contains(github.event.pull_request.labels.*.name, 'release:breaking') &&
+            !contains(github.event.pull_request.labels.*.name, 'breaking-change')
+          }}
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          baseline-rev: ${{ github.event.pull_request.base.sha }}
+          feature-group: all-features
+          release-type: minor
