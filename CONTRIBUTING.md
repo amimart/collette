@@ -38,13 +38,18 @@ Avoid vague titles:
 
 ## Emoji Taxonomy
 
-Start pull request titles with one emoji from this taxonomy. Emojis are kept in
-the generated changelog and act as lightweight visual categories.
+Pull request titles may start with an emoji from this taxonomy. Emojis are not
+mandatory, and this list is intentionally not rigid or exhaustive.
+
+Emojis are kept in the generated changelog and act as lightweight visual
+categories.
 
 | Emoji | Category | Use for |
 | --- | --- | --- |
-| `✨` | Feature | New user-facing capabilities |
+| `✨` | API | API additions or improvements |
 | `🐛` | Fix | Bug fixes |
+| `🛠️` | Internal Logic | Internal behavior changes, whether they ship as a fix or a feature |
+| `💾` | Storage Backend | MultiStore backend work |
 | `⚡` | Performance | Performance improvements |
 | `🧪` | Tests | Test-only changes |
 | `📝` | Docs | Documentation-only changes |
