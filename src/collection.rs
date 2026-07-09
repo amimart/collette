@@ -32,6 +32,11 @@ where
     const MAIN_STORE: &'static str = "__main";
 
     pub fn new(name: &'static str, db: DB) -> Self {
+        let mut stores = vec![Self::MAIN_STORE];
+        Indexes::store_names(&mut stores);
+        db.prepare(name, stores)
+            .unwrap_or_else(|err| panic!("failed to prepare collection '{name}': {err}"));
+
         Self {
             name,
             db,
