@@ -76,7 +76,8 @@ Use `release:skip` for changes that should not appear in the changelog.
 
 Pull requests that intentionally break the public API must use
 `release:breaking` or `breaking-change`. Without one of those labels, the
-SemVer workflow fails when it detects a breaking public API change.
+breaking-change detection workflow fails when it detects a breaking public API
+change.
 
 The `bug` and `enhancement` labels are applied automatically from Conventional
 Commit signals in the pull request title or commits:

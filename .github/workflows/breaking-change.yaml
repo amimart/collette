@@ -1,4 +1,4 @@
-name: SemVer
+name: Breaking Change
 
 on:
   pull_request:
@@ -19,8 +19,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  semver:
-    name: Breaking changes
+  breaking-change:
+    name: Detect breaking changes
     runs-on: ubuntu-latest
     steps:
       - name: Check breaking-change label
@@ -29,7 +29,7 @@ jobs:
             contains(github.event.pull_request.labels.*.name, 'release:breaking') ||
             contains(github.event.pull_request.labels.*.name, 'breaking-change')
           }}
-        run: echo "Breaking-change label present; skipping SemVer compatibility gate."
+        run: echo "Breaking-change label present; skipping breaking-change detection."
 
       - uses: actions/checkout@v7
         if: >-
