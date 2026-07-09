@@ -8,6 +8,36 @@ use crate::key::Key;
 /// - its primary key type;
 /// - how its primary key is accessed;
 /// - how it is encoded and decoded from storage bytes.
+///
+/// # Examples
+///
+/// ```
+/// use collette::{CodecError, Entity};
+///
+/// struct User {
+///     id: u64,
+///     name: String,
+/// }
+///
+/// impl Entity for User {
+///     type Key<'a> = u64;
+///
+///     fn key(&self) -> Self::Key<'_> {
+///         self.id
+///     }
+///
+///     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+///         Ok(self.name.as_bytes().to_vec())
+///     }
+///
+///     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+///         Ok(Self {
+///             id: 0,
+///             name: String::from_utf8_lossy(bytes).into_owned(),
+///         })
+///     }
+/// }
+/// ```
 pub trait Entity: Sized {
     /// The primary key type of the entity.
     ///
