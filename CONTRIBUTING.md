@@ -61,24 +61,40 @@ categories.
 If multiple categories apply, choose the one that best describes the user-facing
 impact. For example, a bug fix with tests should use `🐛`, not `🧪`.
 
-## Release Labels
+## Release Intent
 
-Release notes are grouped by pull request labels. Add one of these labels when
-opening or merging a pull request:
+Release versioning is computed from Conventional Commits. Labels do not request
+or override version bumps.
 
-- `release:breaking`
-- `release:feature`
-- `release:fix`
-- `release:security`
-- `release:skip` or `skip-changelog`
+When preparing a pull request, check that the commits match the intended release
+impact:
 
-Use `release:skip` for changes that should not appear in the changelog.
+- `fix:` and `perf:` trigger patch releases.
+- `feat:` triggers minor releases.
+- `!` markers and `BREAKING CHANGE:` footers mark breaking releases.
+- `docs:`, `test:`, `refactor:`, `ci:`, and `chore:` do not trigger releases
+  by themselves.
 
 Pull requests that intentionally break the public API must include a
 Conventional Commit breaking marker in at least one commit. Use `!` in the
 commit header or add a `BREAKING CHANGE:` footer. Without that marker, the
 breaking-change detection workflow fails when it detects a breaking public API
 change.
+
+## Pull Request Labels
+
+Release notes are grouped by ordinary pull request labels:
+
+- `breaking-change`
+- `enhancement`
+- `bug`
+- `security`
+- `documentation`
+- `dependencies`
+- `ci`
+
+Use labels to help the changelog land in the right section. Do not use labels to
+ask for a version bump; fix the commits instead.
 
 The `bug` and `enhancement` labels are applied automatically from Conventional
 Commit signals in the pull request title or commits:
@@ -92,12 +108,6 @@ files.
 ## Commits
 
 Commit messages must follow Conventional Commits:
-
-- `fix:` and `perf:` trigger patch releases.
-- `feat:` triggers minor releases.
-- `!` markers and `BREAKING CHANGE:` footers mark breaking releases.
-- `docs:`, `test:`, `refactor:`, `ci:`, and `chore:` do not trigger releases
-  by themselves.
 
 Examples:
 
