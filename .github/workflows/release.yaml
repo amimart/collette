@@ -17,6 +17,9 @@ permissions:
   contents: write
   pull-requests: read
 
+env:
+  RELEASE_PRE_1_0_BREAKING_AS: minor
+
 jobs:
   guard:
     name: Guard

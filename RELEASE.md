@@ -19,8 +19,8 @@ If there are no releasable commits since the latest tag, the workflow fails
 without creating a release.
 
 While the crate is on `0.x`, breaking changes are expected to bump the minor
-version by default. Set `RELEASE_PRE_1_0_BREAKING_AS=major` in the workflow
-environment if that policy changes.
+version by default. Change `RELEASE_PRE_1_0_BREAKING_AS` in the release workflow
+to `major` if that policy changes.
 
 ## Changelog
 
