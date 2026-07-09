@@ -14,11 +14,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 env:
   RELEASE_PRE_1_0_BREAKING_AS: minor
+  GNUPGHOME: ${{ github.workspace }}/.gnupg
 
 jobs:
   guard:
@@ -64,6 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          token: ${{ secrets.RELEASE_GH_TOKEN }}
 
       - name: Plan release
         id: plan
@@ -71,7 +73,7 @@ jobs:
 
       - name: Generate release notes
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
           PREVIOUS_TAG: ${{ steps.plan.outputs.previous_tag }}
           TAG: ${{ steps.plan.outputs.tag }}
         run: |
@@ -93,21 +95,66 @@ jobs:
           RELEASE_VERSION: ${{ steps.plan.outputs.version }}
         run: node scripts/prepare-release.mjs apply release-notes.md
 
+      - name: Configure git signing
+        if: inputs.dry_run == false
+        env:
+          RELEASE_GIT_USER_NAME: ${{ vars.RELEASE_GIT_USER_NAME }}
+          RELEASE_GIT_USER_EMAIL: ${{ vars.RELEASE_GIT_USER_EMAIL }}
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "${RELEASE_GIT_USER_NAME}" ] || [ -z "${RELEASE_GIT_USER_EMAIL}" ]; then
+            echo "::error::Set RELEASE_GIT_USER_NAME and RELEASE_GIT_USER_EMAIL repository variables."
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_GPG_PRIVATE_KEY}" ]; then
+            echo "::error::Set RELEASE_GPG_PRIVATE_KEY repository secret."
+            exit 1
+          fi
+
+          mkdir -p "${GNUPGHOME}"
+          chmod 700 "${GNUPGHOME}"
+
+          printf '%s' "${RELEASE_GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          signing_key="$(gpg --batch --list-secret-keys --with-colons \
+            | awk -F: '/^sec:/ { print $5; exit }')"
+
+          if [ -z "${signing_key}" ]; then
+            echo "::error::Could not find an imported GPG signing key."
+            exit 1
+          fi
+
+          printf '%s' "${RELEASE_GPG_PASSPHRASE}" > "${GNUPGHOME}/gpg-passphrase"
+          chmod 600 "${GNUPGHOME}/gpg-passphrase"
+
+          cat > "${GNUPGHOME}/gpg-wrapper" <<'EOF'
+          #!/usr/bin/env bash
+          exec gpg --batch --pinentry-mode loopback --passphrase-file "${GNUPGHOME}/gpg-passphrase" "$@"
+          EOF
+          chmod 700 "${GNUPGHOME}/gpg-wrapper"
+
+          git config user.name "${RELEASE_GIT_USER_NAME}"
+          git config user.email "${RELEASE_GIT_USER_EMAIL}"
+          git config user.signingkey "${signing_key}"
+          git config commit.gpgsign true
+          git config tag.gpgsign true
+          git config gpg.program "${GNUPGHOME}/gpg-wrapper"
+
       - name: Commit release
         if: inputs.dry_run == false
         env:
           TAG: ${{ steps.plan.outputs.tag }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "chore(release): ${TAG}"
+          git commit -S -m "chore(release): ${TAG}"
 
       - name: Tag release
         if: inputs.dry_run == false
         env:
           TAG: ${{ steps.plan.outputs.tag }}
-        run: git tag -a "${TAG}" -m "${TAG}"
+        run: git tag -s "${TAG}" -m "${TAG}"
 
       - name: Push release commit and tag
         if: inputs.dry_run == false
@@ -120,6 +167,6 @@ jobs:
       - name: Create GitHub release
         if: inputs.dry_run == false
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
           TAG: ${{ steps.plan.outputs.tag }}
         run: gh release create "${TAG}" --title "${TAG}" --notes-file release-notes-clean.md
