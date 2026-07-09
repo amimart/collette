@@ -1,16 +1,16 @@
 [package]
-name = "colette"
+name = "collette"
 version = "0.1.0"
 edition = "2021"
 description = "Typed collections, indexes and scans over key-value stores"
 license = "MIT"
-repository = "https://github.com/amimart/colette"
+repository = "https://github.com/amimart/collette"
 readme = "README.md"
 keywords = ["database", "index", "key-value", "storage"]
 categories = ["database", "data-structures"]
 
 [lib]
-name = "colette"
+name = "collette"
 path = "src/lib.rs"
 
 [features]

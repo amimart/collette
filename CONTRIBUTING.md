@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Colette.
+Thanks for helping improve Collette.
 
 ## Development
 
@@ -61,43 +61,51 @@ categories.
 If multiple categories apply, choose the one that best describes the user-facing
 impact. For example, a bug fix with tests should use `🐛`, not `🧪`.
 
-## Release Labels
+## Release Intent
 
-Release notes are grouped by pull request labels. Add one of these labels when
-opening or merging a pull request:
+Release versioning is computed from Conventional Commits. Labels do not request
+or override version bumps.
 
-- `release:breaking`
-- `release:feature`
-- `release:fix`
-- `release:security`
-- `release:skip` or `skip-changelog`
+When preparing a pull request, check that the commits match the intended release
+impact:
 
-Use `release:skip` for changes that should not appear in the changelog.
+- `fix:` and `perf:` trigger patch releases.
+- `feat:` triggers minor releases.
+- `!` markers and `BREAKING CHANGE:` footers mark breaking releases.
+  They also apply the `breaking-change` label.
+- `docs:`, `test:`, `refactor:`, `ci:`, and `chore:` do not trigger releases
+  by themselves.
 
 Pull requests that intentionally break the public API must include a
 Conventional Commit breaking marker in at least one commit. Use `!` in the
 commit header or add a `BREAKING CHANGE:` footer. Without that marker, the
 breaking-change detection workflow fails when it detects a breaking public API
-change.
+change. When that happens, the workflow comments on the pull request with the
+detected public API changes.
 
-The `bug` and `enhancement` labels are applied automatically from Conventional
-Commit signals in the pull request title or commits:
+## Pull Request Labels
 
-- `fix:` applies `bug`
-- `feat:` applies `enhancement`
+Pull request labels are computed by CI from commits and changed files. Before
+merging, check that the labels match the intent of the pull request.
 
-The `ci` and `documentation` labels are applied automatically from changed
-files.
+Labels help the changelog land in the right section. They do not request or
+override a version bump; fix the commits instead.
+
+Examples of labels include:
+
+- `enhancement` for feature work
+- `bug` for fixes
+- `security` for security hardening or fixes
+- `documentation` for documentation-only changes
+- `dependencies` for dependency updates
+- `ci` for CI, build, and release automation
+- `breaking-change` for breaking API changes
+
+This list is not exhaustive. Prefer the label set that best reflects the PR.
 
 ## Commits
 
 Commit messages must follow Conventional Commits:
-
-- `fix:` and `perf:` trigger patch releases.
-- `feat:` triggers minor releases.
-- `!` markers and `BREAKING CHANGE:` footers mark breaking releases.
-- `docs:`, `test:`, `refactor:`, `ci:`, and `chore:` do not trigger releases
-  by themselves.
 
 Examples:
 

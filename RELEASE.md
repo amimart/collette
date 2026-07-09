@@ -1,6 +1,6 @@
 # Release Process
 
-Colette releases are cut manually from the `main` branch.
+Collette releases are cut manually from the `main` branch.
 
 ## Versioning
 
@@ -32,14 +32,18 @@ The same cleaned notes are used as the GitHub Release body.
 Pull request title emojis are preserved in the generated changelog and can be
 used as lightweight visual categories.
 
-Pull requests can be grouped with these labels:
+Release note sections are grouped with ordinary pull request labels:
 
-- `release:breaking`
-- `release:feature`
-- `release:fix`
-- `release:docs`
+- `breaking-change`
+- `enhancement`
+- `bug`
+- `security`
+- `documentation`
 - `dependencies`
-- `release:skip` or `skip-changelog`
+- `ci`
+
+These labels do not control the released version. The version is computed from
+Conventional Commits.
 
 ## Cutting a Release
 
@@ -51,4 +55,10 @@ Pull requests can be grouped with these labels:
 The workflow commits `CHANGELOG.md` back to `main`, creates a `vX.Y.Z` tag,
 pushes the tag, and creates the GitHub Release.
 
-Publishing to crates.io is intentionally handled by a separate workflow.
+The pushed tag triggers the `Publish` workflow. That workflow checks that the
+tag version matches `Cargo.toml`, then publishes the crate to crates.io.
+
+## Publishing Setup
+
+Create a crates.io API token with publish permission for the crate, then add it
+to the repository secrets as `CARGO_REGISTRY_TOKEN`.

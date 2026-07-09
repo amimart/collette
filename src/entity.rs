@@ -1,7 +1,7 @@
 use crate::error::CodecError;
 use crate::key::Key;
 
-/// A persistable record stored inside a Colette collection.
+/// A persistable record stored inside a Collette collection.
 ///
 /// An entity defines:
 ///

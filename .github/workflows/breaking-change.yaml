@@ -14,7 +14,7 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   breaking-change:
@@ -33,6 +33,76 @@ jobs:
           baseline-rev: ${{ github.event.pull_request.base.sha }}
           feature-group: all-features
           release-type: minor
+
+      - name: Render breaking-change report
+        if: steps.api-check.outcome == 'failure'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set +e
+          if ! cargo semver-checks --version >/dev/null 2>&1; then
+            cargo install cargo-semver-checks --locked
+          fi
+
+          cargo semver-checks \
+            --baseline-rev "${BASE_SHA}" \
+            --all-features \
+            --release-type minor > breaking-change-report.txt 2>&1
+
+          {
+            echo "<!-- collette-breaking-change-report -->"
+            echo "## Breaking public API changes detected"
+            echo
+            echo "The public API changed in a way that is not compatible with a minor release."
+            echo
+            echo '```text'
+            head -c 50000 breaking-change-report.txt
+            echo
+            echo '```'
+            echo
+            echo "If this is intentional, add a Conventional Commit breaking marker:"
+            echo
+            echo "- use \`!\` in a commit header, such as \`feat!: rename public API\`"
+            echo "- or add a \`BREAKING CHANGE:\` commit footer"
+          } > breaking-change-report.md
+
+      - name: Comment breaking-change report
+        if: steps.api-check.outcome == 'failure'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require("fs");
+            const marker = "<!-- collette-breaking-change-report -->";
+            const body = fs.readFileSync("breaking-change-report.md", "utf8");
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const previous = comments.find((comment) =>
+              comment.user.type === "Bot" && comment.body.includes(marker)
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
 
       - name: Check breaking-change commit marker
         if: steps.api-check.outcome == 'failure'
