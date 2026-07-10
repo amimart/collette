@@ -12,15 +12,6 @@ changelog:
     - title: Security
       labels:
         - security
-    - title: Documentation
-      labels:
-        - documentation
-    - title: Dependencies
-      labels:
-        - dependencies
-    - title: CI
-      labels:
-        - ci
     - title: Other Changes
       labels:
         - "*"
