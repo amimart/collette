@@ -152,8 +152,9 @@ function tagVersion(tag) {
 
 function cleanReleaseNotes(notes) {
   return notes
+    .replace(/<!-- Release notes generated using configuration in \.github\/release\.yml at .+? -->\s*/g, "")
     .replace(/^## What's Changed\s*/m, "")
-    .replace(/\n## New Contributors[\s\S]*?(?=\n\*\*Full Changelog\*\*:|\n## |\s*$)/m, "")
+    .replace(/(?:^|\n)## New Contributors\s+[\s\S]*?(?=\n\*\*Full Changelog\*\*:|\n## |\s*$)/m, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

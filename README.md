@@ -174,8 +174,6 @@ let users = collection::<User, _>("users", db)
 Indexes are the query surface. A compound `Multi` index lets you group records by a prefix, then keep each group ordered by the next key parts.
 
 ```rust
-use collette::{Index, Multi};
-
 struct ByStatusAndCreatedAt;
 
 impl Index<User> for ByStatusAndCreatedAt {
@@ -190,20 +188,9 @@ impl Index<User> for ByStatusAndCreatedAt {
 }
 ```
 
-Register the index on the collection:
-
-```rust
-let users = collection::<User, _>("users", db)
-    .with_index::<ByStatusAndCreatedAt>()
-    .build();
-```
-
 Then scan it by prefix or by range with cursor support:
 
 ```rust
-use collette::{Direction, PrefixScan};
-use std::ops::Bound;
-
 let active_users = users.scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
     .direction(Direction::LeftToRight)

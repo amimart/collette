@@ -95,6 +95,9 @@ jobs:
           RELEASE_VERSION: ${{ steps.plan.outputs.version }}
         run: node scripts/prepare-release.mjs apply release-notes.md
 
+      - name: Format changelog
+        run: npx markdownlint-cli2 --fix CHANGELOG.md
+
       - name: Configure git signing
         if: inputs.dry_run == false
         env:
