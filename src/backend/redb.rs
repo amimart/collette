@@ -61,6 +61,7 @@ impl RedbMultiStore {
 }
 
 impl MultiStore for RedbMultiStore {
+    type Error = BackendError;
     type ReadHandle = RedbReadHandle;
     type WriteHandle = RedbWriteHandle;
 
@@ -68,7 +69,7 @@ impl MultiStore for RedbMultiStore {
         &self,
         namespace: &'static str,
         stores: impl IntoIterator<Item = &'static str>,
-    ) -> Result<(), BackendError> {
+    ) -> Result<(), Self::Error> {
         let prepared = stores
             .into_iter()
             .map(|store| {
@@ -100,7 +101,7 @@ impl MultiStore for RedbMultiStore {
         Ok(())
     }
 
-    fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, BackendError> {
+    fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, Self::Error> {
         Ok(RedbReadHandle {
             namespace,
             tables: self.tables.read().unwrap().clone(),
@@ -108,7 +109,7 @@ impl MultiStore for RedbMultiStore {
         })
     }
 
-    fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, BackendError> {
+    fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, Self::Error> {
         Ok(RedbWriteHandle {
             namespace,
             tables: self.tables.read().unwrap().clone(),
@@ -125,9 +126,10 @@ pub struct RedbReadHandle {
 }
 
 impl MultiStoreReadHandle for RedbReadHandle {
+    type Error = BackendError;
     type Store = RedbReadStore;
 
-    fn open_store(&self, name: &'static str) -> Result<Self::Store, BackendError> {
+    fn open_store(&self, name: &'static str) -> Result<Self::Store, Self::Error> {
         let table = prepared_table_name(&self.tables, self.namespace, name);
         Ok(RedbReadStore {
             table: self
@@ -146,9 +148,10 @@ pub struct RedbWriteHandle {
 }
 
 impl MultiStoreWriteHandle for RedbWriteHandle {
+    type Error = BackendError;
     type Store<'a> = RedbWriteStore<'a>;
 
-    fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, BackendError> {
+    fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, Self::Error> {
         let table = prepared_table_name(&self.tables, self.namespace, name);
         Ok(RedbWriteStore {
             table: self
@@ -158,7 +161,7 @@ impl MultiStoreWriteHandle for RedbWriteHandle {
         })
     }
 
-    fn commit(self) -> Result<(), BackendError> {
+    fn commit(self) -> Result<(), Self::Error> {
         self.write.commit().map_err(BackendError::new)
     }
 }
@@ -169,9 +172,10 @@ pub struct RedbReadStore {
 }
 
 impl ReadKVStore for RedbReadStore {
+    type Error = BackendError;
     type Iter = RedbReadIterator;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
         self.table
             .get(key.as_ref())
             .map(|value| value.map(|value| value.value().to_vec()))
@@ -182,7 +186,7 @@ impl ReadKVStore for RedbReadStore {
         self,
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
-    ) -> Result<Self::Iter, BackendError> {
+    ) -> Result<Self::Iter, Self::Error> {
         let bounds = scan_bounds(&range);
         let range = self
             .table
@@ -200,17 +204,21 @@ pub struct RedbWriteStore<'a> {
     table: WriteTable<'a>,
 }
 
-impl<'a> ReadWriteKVStore<'a> for RedbWriteStore<'a> {}
+impl<'a> ReadWriteKVStore<'a> for RedbWriteStore<'a> {
+    type Error = BackendError;
+}
 
 impl<'a> WriteKVStore<'a> for RedbWriteStore<'a> {
-    fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), BackendError> {
+    type Error = BackendError;
+
+    fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), Self::Error> {
         self.table
             .insert(key.as_ref(), value.as_ref())
             .map(|_| ())
             .map_err(BackendError::new)
     }
 
-    fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), BackendError> {
+    fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), Self::Error> {
         self.table
             .remove(key.as_ref())
             .map(|_| ())
@@ -219,9 +227,10 @@ impl<'a> WriteKVStore<'a> for RedbWriteStore<'a> {
 }
 
 impl<'txn> ReadKVStore for RedbWriteStore<'txn> {
+    type Error = BackendError;
     type Iter = RedbWriteIterator<'txn>;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
         self.table
             .get(key.as_ref())
             .map(|value| value.map(|value| value.value().to_vec()))
@@ -232,7 +241,7 @@ impl<'txn> ReadKVStore for RedbWriteStore<'txn> {
         self,
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
-    ) -> Result<Self::Iter, BackendError> {
+    ) -> Result<Self::Iter, Self::Error> {
         let table = self.table;
         let bounds = scan_bounds(&range);
         let range = table.range::<&[u8]>(bounds).map_err(BackendError::new)?;
