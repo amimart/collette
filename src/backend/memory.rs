@@ -6,8 +6,8 @@
 
 use crate::scan::Direction;
 use crate::store::{
-    MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
-    WriteKVStore,
+    KVEntry, MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore,
+    ReadWriteKVStore, WriteKVStore,
 };
 use std::collections::BTreeMap;
 use std::convert::Infallible;
@@ -33,11 +33,25 @@ pub type StagedStores = BTreeMap<&'static str, KVStore>;
 #[doc(hidden)]
 pub type KVStore = BTreeMap<Vec<u8>, Vec<u8>>;
 #[doc(hidden)]
-pub type ScanItem = (Vec<u8>, Vec<u8>);
-#[doc(hidden)]
-pub type ScanResult = Result<ScanItem, Infallible>;
+pub type ScanResult = Result<InMemoryEntry, Infallible>;
 #[doc(hidden)]
 pub type ScanResults = Vec<ScanResult>;
+
+#[doc(hidden)]
+pub struct InMemoryEntry {
+    key: Vec<u8>,
+    value: Vec<u8>,
+}
+
+impl KVEntry for InMemoryEntry {
+    fn key(&self) -> &[u8] {
+        &self.key
+    }
+
+    fn value(&self) -> &[u8] {
+        &self.value
+    }
+}
 
 #[doc(hidden)]
 pub struct NamespacedState {
@@ -193,10 +207,15 @@ pub struct InMemoryReadStore {
 
 impl ReadKVStore for InMemoryReadStore {
     type Error = Infallible;
+    type Value<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
+    type Entry = InMemoryEntry;
     type Iter = IntoIter<ScanResult>;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
-        Ok(self.store.get(key.as_ref()).cloned())
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, Self::Error> {
+        Ok(self.store.get(key.as_ref()).map(Vec::as_slice))
     }
 
     fn scan(
@@ -208,13 +227,23 @@ impl ReadKVStore for InMemoryReadStore {
             Direction::LeftToRight => self
                 .store
                 .range(range)
-                .map(|(k, v)| Ok((k.clone(), v.clone())))
+                .map(|(key, value)| {
+                    Ok(InMemoryEntry {
+                        key: key.clone(),
+                        value: value.clone(),
+                    })
+                })
                 .collect(),
             Direction::RightToLeft => self
                 .store
                 .range(range)
                 .rev()
-                .map(|(k, v)| Ok((k.clone(), v.clone())))
+                .map(|(key, value)| {
+                    Ok(InMemoryEntry {
+                        key: key.clone(),
+                        value: value.clone(),
+                    })
+                })
                 .collect(),
         };
 
@@ -278,10 +307,15 @@ impl<'a> WriteKVStore<'a> for InMemoryWriteStore<'a> {
 
 impl ReadKVStore for InMemoryWriteStore<'_> {
     type Error = Infallible;
+    type Value<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
+    type Entry = InMemoryEntry;
     type Iter = IntoIter<ScanResult>;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
-        Ok(self.store.get(key.as_ref()).map(|v| v.to_owned()))
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, Self::Error> {
+        Ok(self.store.get(key.as_ref()).map(Vec::as_slice))
     }
 
     fn scan(
@@ -293,13 +327,23 @@ impl ReadKVStore for InMemoryWriteStore<'_> {
             Direction::LeftToRight => self
                 .store
                 .range(range)
-                .map(|(k, v)| Ok((k.clone(), v.clone())))
+                .map(|(key, value)| {
+                    Ok(InMemoryEntry {
+                        key: key.clone(),
+                        value: value.clone(),
+                    })
+                })
                 .collect(),
             Direction::RightToLeft => self
                 .store
                 .range(range)
                 .rev()
-                .map(|(k, v)| Ok((k.clone(), v.clone())))
+                .map(|(key, value)| {
+                    Ok(InMemoryEntry {
+                        key: key.clone(),
+                        value: value.clone(),
+                    })
+                })
                 .collect(),
         };
 

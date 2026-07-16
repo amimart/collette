@@ -6,8 +6,8 @@
 use crate::error::BackendError;
 use crate::scan::Direction;
 use crate::store::{
-    MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
-    WriteKVStore,
+    KVEntry, MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore,
+    ReadWriteKVStore, WriteKVStore,
 };
 use redb::{
     Database, ReadOnlyTable, ReadTransaction, ReadableDatabase, ReadableTable, Table,
@@ -24,10 +24,35 @@ type WriteTable<'a> = Table<'a, &'static [u8], &'static [u8]>;
 type RedbRange<'a> = redb::Range<'a, &'static [u8], &'static [u8]>;
 type RedbAccessGuard<'a> = redb::AccessGuard<'a, &'static [u8]>;
 type RedbRangeItem<'a> = redb::Result<(RedbAccessGuard<'a>, RedbAccessGuard<'a>)>;
-type ScanResult = Result<(Vec<u8>, Vec<u8>), BackendError>;
+type ScanResult = Result<RedbEntry<'static>, BackendError>;
 type TableKey = (&'static str, &'static str);
 type PreparedTables = BTreeMap<TableKey, Arc<str>>;
 type SharedPreparedTables = Arc<RwLock<Arc<PreparedTables>>>;
+
+#[doc(hidden)]
+pub struct RedbValue<'a>(RedbAccessGuard<'a>);
+
+impl AsRef<[u8]> for RedbValue<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.value()
+    }
+}
+
+#[doc(hidden)]
+pub struct RedbEntry<'a> {
+    key: RedbAccessGuard<'a>,
+    value: RedbAccessGuard<'a>,
+}
+
+impl KVEntry for RedbEntry<'_> {
+    fn key(&self) -> &[u8] {
+        self.key.value()
+    }
+
+    fn value(&self) -> &[u8] {
+        self.value.value()
+    }
+}
 
 #[derive(Clone)]
 /// Persistent Collette backend backed by a redb database.
@@ -173,12 +198,17 @@ pub struct RedbReadStore {
 
 impl ReadKVStore for RedbReadStore {
     type Error = BackendError;
+    type Value<'a>
+        = RedbValue<'a>
+    where
+        Self: 'a;
+    type Entry = RedbEntry<'static>;
     type Iter = RedbReadIterator;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, Self::Error> {
         self.table
             .get(key.as_ref())
-            .map(|value| value.map(|value| value.value().to_vec()))
+            .map(|value| value.map(RedbValue))
             .map_err(BackendError::new)
     }
 
@@ -228,12 +258,17 @@ impl<'a> WriteKVStore<'a> for RedbWriteStore<'a> {
 
 impl<'txn> ReadKVStore for RedbWriteStore<'txn> {
     type Error = BackendError;
+    type Value<'a>
+        = RedbValue<'a>
+    where
+        Self: 'a;
+    type Entry = RedbEntry<'static>;
     type Iter = RedbWriteIterator<'txn>;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, Self::Error> {
         self.table
             .get(key.as_ref())
-            .map(|value| value.map(|value| value.value().to_vec()))
+            .map(|value| value.map(RedbValue))
             .map_err(BackendError::new)
     }
 
@@ -299,8 +334,8 @@ impl<'a> DirectedRange<'a> {
     }
 }
 
-impl Iterator for DirectedRange<'_> {
-    type Item = ScanResult;
+impl<'a> Iterator for DirectedRange<'a> {
+    type Item = Result<RedbEntry<'a>, BackendError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -334,9 +369,9 @@ fn scan_bounds(range: &impl RangeBounds<Vec<u8>>) -> (Bound<&[u8]>, Bound<&[u8]>
     )
 }
 
-fn scan_entry(entry: RedbRangeItem<'_>) -> ScanResult {
+fn scan_entry(entry: RedbRangeItem<'_>) -> Result<RedbEntry<'_>, BackendError> {
     let (key, value) = entry.map_err(BackendError::new)?;
-    Ok((key.value().to_vec(), value.value().to_vec()))
+    Ok(RedbEntry { key, value })
 }
 
 fn bytes_bound(bound: Bound<&Vec<u8>>) -> Bound<&[u8]> {

@@ -99,16 +99,42 @@ pub trait WriteKVStore<'a> {
     fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), Self::Error>;
 }
 
+/// Key-value bytes yielded by a backend scan.
+///
+/// Implementations may own bytes, borrow bytes, or hold backend guard objects
+/// that keep the returned byte slices valid.
+pub trait KVEntry {
+    /// Encoded key bytes.
+    fn key(&self) -> &[u8];
+
+    /// Encoded value bytes.
+    fn value(&self) -> &[u8];
+}
+
 /// Read-only ordered key-value store.
 pub trait ReadKVStore {
     /// Error returned by this store.
     type Error: std::error::Error + Send + Sync + 'static;
 
+    /// Value returned by [`get`](Self::get).
+    ///
+    /// This can be a borrowed slice, an owned byte buffer, or a backend guard
+    /// object exposing bytes through [`AsRef<[u8]>`](AsRef).
+    type Value<'a>: AsRef<[u8]>
+    where
+        Self: 'a;
+
+    /// Entry yielded by [`scan`](Self::scan).
+    ///
+    /// This keeps scan results from forcing key/value copies at the backend
+    /// trait boundary.
+    type Entry: KVEntry;
+
     /// Iterator returned by [`scan`](Self::scan).
-    type Iter: Iterator<Item = Result<(Vec<u8>, Vec<u8>), Self::Error>>;
+    type Iter: Iterator<Item = Result<Self::Entry, Self::Error>>;
 
     /// Gets a value by exact key.
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, Self::Error>;
 
     /// Scans key-value pairs in byte-key order inside `range`.
     fn scan(

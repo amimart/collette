@@ -102,7 +102,7 @@ where
             let old = store
                 .get(&enc_pk)
                 .map_err(Error::backend)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
+                .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
                 .transpose()?;
 
             if old.is_none() {
@@ -138,7 +138,7 @@ where
             let old = store
                 .get(&enc_pk)
                 .map_err(Error::backend)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
+                .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
                 .transpose()?;
 
             store
@@ -174,7 +174,7 @@ where
             let record = store
                 .get(enc_pk)
                 .map_err(Error::backend)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
+                .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
                 .transpose()?;
 
             let record = match record {
@@ -210,7 +210,7 @@ where
             .map_err(Error::backend)?
             .get(key.borrow().encode())
             .map_err(Error::backend)?
-            .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
+            .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
             .transpose()
     }
 

@@ -1,6 +1,6 @@
 use crate::scan::Direction;
 use crate::store::{
-    MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
+    KVEntry, MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
 };
 use std::ops::{Bound, RangeBounds};
 use std::sync::mpsc;
@@ -184,7 +184,13 @@ pub(crate) fn write_handle_reads_include_uncommitted_writes<DB: MultiStore>(
     {
         let mut store = write.open_store("items").unwrap();
         store.set(b"k", b"uncommitted").unwrap();
-        assert_eq!(store.get(b"k").unwrap(), Some(b"uncommitted".to_vec()));
+        assert_eq!(
+            store
+                .get(b"k")
+                .unwrap()
+                .map(|value| value.as_ref().to_vec()),
+            Some(b"uncommitted".to_vec())
+        );
     }
     write.commit().unwrap();
 }
@@ -203,7 +209,12 @@ pub(crate) fn read_handles_keep_stable_snapshots<DB: MultiStore>(make_db: &impl 
     );
 
     assert_eq!(
-        before.open_store("items").unwrap().get(b"k").unwrap(),
+        before
+            .open_store("items")
+            .unwrap()
+            .get(b"k")
+            .unwrap()
+            .map(|value| value.as_ref().to_vec()),
         None,
         "existing read handles should keep their pre-commit snapshot"
     );
@@ -238,8 +249,20 @@ pub(crate) fn multiple_read_handles_ignore_open_write_and_commit<DB: MultiStore>
 
     for read in [&read_a, &read_b, &db.read("mvcc-readers").unwrap()] {
         let items = read.open_store("items").unwrap();
-        assert_eq!(items.get(b"k").unwrap(), Some(b"before".to_vec()));
-        assert_eq!(items.get(b"new").unwrap(), None);
+        assert_eq!(
+            items
+                .get(b"k")
+                .unwrap()
+                .map(|value| value.as_ref().to_vec()),
+            Some(b"before".to_vec())
+        );
+        assert_eq!(
+            items
+                .get(b"new")
+                .unwrap()
+                .map(|value| value.as_ref().to_vec()),
+            None
+        );
     }
 
     write.commit().unwrap();
@@ -247,12 +270,18 @@ pub(crate) fn multiple_read_handles_ignore_open_write_and_commit<DB: MultiStore>
     for read in [&read_a, &read_b] {
         let items = read.open_store("items").unwrap();
         assert_eq!(
-            items.get(b"k").unwrap(),
+            items
+                .get(b"k")
+                .unwrap()
+                .map(|value| value.as_ref().to_vec()),
             Some(b"before".to_vec()),
             "existing read handles should not observe later commits"
         );
         assert_eq!(
-            items.get(b"new").unwrap(),
+            items
+                .get(b"new")
+                .unwrap()
+                .map(|value| value.as_ref().to_vec()),
             None,
             "existing read handles should not observe newly committed keys"
         );
@@ -260,8 +289,20 @@ pub(crate) fn multiple_read_handles_ignore_open_write_and_commit<DB: MultiStore>
 
     let after = db.read("mvcc-readers").unwrap();
     let items = after.open_store("items").unwrap();
-    assert_eq!(items.get(b"k").unwrap(), Some(b"after".to_vec()));
-    assert_eq!(items.get(b"new").unwrap(), Some(b"created".to_vec()));
+    assert_eq!(
+        items
+            .get(b"k")
+            .unwrap()
+            .map(|value| value.as_ref().to_vec()),
+        Some(b"after".to_vec())
+    );
+    assert_eq!(
+        items
+            .get(b"new")
+            .unwrap()
+            .map(|value| value.as_ref().to_vec()),
+        Some(b"created".to_vec())
+    );
 }
 
 pub(crate) fn second_write_waits_for_open_write_to_finish<DB>(make_db: &impl Fn() -> DB)
@@ -319,7 +360,12 @@ pub(crate) fn multi_store_commits_are_atomic<DB: MultiStore>(make_db: &impl Fn()
     }
 
     assert_eq!(
-        before.open_store("primary").unwrap().get(b"id:1").unwrap(),
+        before
+            .open_store("primary")
+            .unwrap()
+            .get(b"id:1")
+            .unwrap()
+            .map(|value| value.as_ref().to_vec()),
         None
     );
     assert_eq!(
@@ -327,7 +373,8 @@ pub(crate) fn multi_store_commits_are_atomic<DB: MultiStore>(make_db: &impl Fn()
             .open_store("index")
             .unwrap()
             .get(b"name:record")
-            .unwrap(),
+            .unwrap()
+            .map(|value| value.as_ref().to_vec()),
         None
     );
 
@@ -553,6 +600,7 @@ fn get<DB: MultiStore>(
         .unwrap()
         .get(key)
         .unwrap()
+        .map(|value| value.as_ref().to_vec())
 }
 
 struct ScanCase {
@@ -617,6 +665,9 @@ fn scan<DB: MultiStore>(
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap()
+        .into_iter()
+        .map(|entry| (entry.key().to_vec(), entry.value().to_vec()))
+        .collect()
 }
 
 fn scan_entries() -> Vec<(Vec<u8>, Vec<u8>)> {
