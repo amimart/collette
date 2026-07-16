@@ -2,7 +2,7 @@
 
 use crate::error::Error;
 use crate::item::Item;
-use crate::store::ReadKVStore;
+use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
 
 /// One record returned from an index scan.
@@ -60,15 +60,20 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|res| {
-            res.map_err(Error::backend).and_then(|(cursor, pk)| {
-                let record_bytes = self.primary_store.get(&pk).map_err(Error::backend)?.ok_or(
-                    Error::Unexpected(format!("primary key from index not found: {:?}", pk)),
-                )?;
-                let record = Record::from_bytes(&record_bytes).map_err(Error::codec)?;
+            res.map_err(Error::backend).and_then(|entry| {
+                let record_bytes = self
+                    .primary_store
+                    .get(entry.value())
+                    .map_err(Error::backend)?
+                    .ok_or(Error::Unexpected(format!(
+                        "primary key from index not found: {:?}",
+                        entry.value()
+                    )))?;
+                let record = Record::from_bytes(record_bytes.as_ref()).map_err(Error::codec)?;
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(cursor),
+                    key: Cursor(entry.key().to_vec()),
                 })
             })
         })
