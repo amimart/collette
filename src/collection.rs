@@ -67,20 +67,22 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
-            if store.get(&enc_pk)?.is_some() {
+            if store.get(&enc_pk).map_err(Error::backend)?.is_some() {
                 Err(Error::AlreadyExists(format!("{:?}", pk)))?
             }
 
-            store.set(&enc_pk, &value.to_bytes()?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
         }
 
         Indexes::update(&mut tx, &pk, None, value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Updates an existing record.
@@ -93,26 +95,29 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let old = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let old = store
-                .get(&enc_pk)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::Codec))
+                .get(&enc_pk)
+                .map_err(Error::backend)?
+                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
             if old.is_none() {
                 Err(Error::NotFound(format!("{:?}", pk)))?
             }
 
-            store.set(&enc_pk, &value.to_bytes()?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
             old
         };
 
         Indexes::update(&mut tx, &pk, old.as_ref(), value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Inserts or updates a record.
@@ -126,22 +131,25 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let old = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let old = store
-                .get(&enc_pk)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::Codec))
+                .get(&enc_pk)
+                .map_err(Error::backend)?
+                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
-            store.set(&enc_pk, &value.to_bytes()?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
             old
         };
 
         Indexes::update(&mut tx, &pk, old.as_ref(), value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Removes a record by primary key.
@@ -159,13 +167,14 @@ where
         let pk = key.borrow();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let record = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let record = store
-                .get(enc_pk)?
-                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::Codec))
+                .get(enc_pk)
+                .map_err(Error::backend)?
+                .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
             let record = match record {
@@ -173,13 +182,15 @@ where
                 None => return Ok(()),
             };
 
-            store.remove(key.borrow().encode())?;
+            store
+                .remove(key.borrow().encode())
+                .map_err(Error::backend)?;
             record
         };
 
         Indexes::remove(&mut tx, &record.key(), &record)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Retrieves a record by primary key.
@@ -193,10 +204,13 @@ where
         Record: 'a,
     {
         self.db
-            .read(self.name)?
-            .open_store(Self::MAIN_STORE)?
-            .get(key.borrow().encode())?
-            .map(|bytes| Record::from_bytes(&bytes).map_err(Error::Codec))
+            .read(self.name)
+            .map_err(Error::backend)?
+            .open_store(Self::MAIN_STORE)
+            .map_err(Error::backend)?
+            .get(key.borrow().encode())
+            .map_err(Error::backend)?
+            .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
             .transpose()
     }
 
@@ -211,7 +225,7 @@ where
     ///
     /// ```no_run
     /// # use collette::backend::memory::InMemoryMultiStore;
-    /// # use collette::{collection, CodecError, Entity, Index, Unique};
+    /// # use collette::{collection, Entity, Index, Unique};
     /// #
     /// # #[derive(Clone)]
     /// # struct User {
@@ -221,16 +235,17 @@ where
     /// #
     /// # impl Entity for User {
     /// #     type Key<'a> = u64;
+    /// #     type Error = std::convert::Infallible;
     /// #
     /// #     fn key(&self) -> Self::Key<'_> {
     /// #         self.id
     /// #     }
     /// #
-    /// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+    /// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
     /// #         Ok(self.email.as_bytes().to_vec())
     /// #     }
     /// #
-    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
     /// #         Ok(Self {
     /// #             id: 0,
     /// #             email: String::from_utf8_lossy(bytes).into_owned(),
@@ -270,7 +285,10 @@ where
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexScan::new(Self::MAIN_STORE, self.db.read(self.name)?))
+        Ok(IndexScan::new(
+            Self::MAIN_STORE,
+            self.db.read(self.name).map_err(Error::backend)?,
+        ))
     }
 }
 
@@ -337,7 +355,7 @@ where
 ///
 /// ```no_run
 /// # use collette::backend::memory::InMemoryMultiStore;
-/// # use collette::{CodecError, Entity, Index, Unique};
+/// # use collette::{Entity, Index, Unique};
 /// #
 /// # #[derive(Clone)]
 /// # struct User {
@@ -347,16 +365,17 @@ where
 /// #
 /// # impl Entity for User {
 /// #     type Key<'a> = u64;
+/// #     type Error = std::convert::Infallible;
 /// #
 /// #     fn key(&self) -> Self::Key<'_> {
 /// #         self.id
 /// #     }
 /// #
-/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
 /// #         Ok(self.email.as_bytes().to_vec())
 /// #     }
 /// #
-/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
 /// #         Ok(Self {
 /// #             id: 0,
 /// #             email: String::from_utf8_lossy(bytes).into_owned(),
@@ -398,7 +417,7 @@ where
 mod tests {
     use crate::collection::Collection;
     use crate::entity::Entity;
-    use crate::error::{CodecError, Error};
+    use crate::error::Error;
     use crate::key::Key;
     use crate::testing::{backend_error, MockDb, SpyRegistry};
 
@@ -410,20 +429,21 @@ mod tests {
 
     impl Entity for TestRecord {
         type Key<'a> = u32;
+        type Error = std::io::Error;
 
         fn key(&self) -> u32 {
             self.id
         }
 
-        fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
             Ok(self.id.to_be_bytes().to_vec())
         }
 
-        fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+        fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
             let id = u32::from_be_bytes(
                 bytes
                     .try_into()
-                    .map_err(|_| CodecError::new(std::io::Error::other("bad length")))?,
+                    .map_err(|_| std::io::Error::other("bad length"))?,
             );
             Ok(TestRecord { id })
         }

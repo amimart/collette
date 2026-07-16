@@ -2,7 +2,7 @@
 
 use collette::collection::{collection, Collection};
 use collette::entity::Entity;
-use collette::error::{CodecError, Error};
+use collette::error::Error;
 use collette::impl_enum_key;
 use collette::index::{Index, Multi, Unique};
 use collette::index_registry::{Cons, Nil};
@@ -484,12 +484,13 @@ pub struct User {
 
 impl Entity for User {
     type Key<'a> = u64;
+    type Error = std::io::Error;
 
     fn key(&self) -> Self::Key<'_> {
         self.id
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
         Ok(format!(
             "{}|{}|{}|{}|{}|{}|{}|{}",
             self.id,
@@ -504,7 +505,7 @@ impl Entity for User {
         .into_bytes())
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         let text = std::str::from_utf8(bytes).unwrap();
         let fields = text.split('|').collect::<Vec<_>>();
         assert_eq!(fields.len(), 8, "malformed user fixture: {text}");
@@ -532,12 +533,13 @@ pub struct Membership {
 
 impl Entity for Membership {
     type Key<'a> = (&'a str, u64);
+    type Error = std::io::Error;
 
     fn key(&self) -> Self::Key<'_> {
         (self.org.as_str(), self.user_id)
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
         Ok(format!(
             "{}|{}|{}|{}",
             self.org,
@@ -548,7 +550,7 @@ impl Entity for Membership {
         .into_bytes())
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         let text = std::str::from_utf8(bytes).unwrap();
         let fields = text.split('|').collect::<Vec<_>>();
         assert_eq!(fields.len(), 4, "malformed membership fixture: {text}");

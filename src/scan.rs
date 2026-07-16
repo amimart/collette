@@ -109,9 +109,13 @@ where
 
         Ok(IndexIterator::new(
             self.read_handle
-                .open_store(Idx::NAME)?
-                .scan((left, right), self.direction)?,
-            self.read_handle.open_store(self.collection_name)?,
+                .open_store(Idx::NAME)
+                .map_err(Error::backend)?
+                .scan((left, right), self.direction)
+                .map_err(Error::backend)?,
+            self.read_handle
+                .open_store(self.collection_name)
+                .map_err(Error::backend)?,
         ))
     }
 
@@ -185,7 +189,7 @@ where
 mod tests {
     use super::*;
     use crate::entity::Entity;
-    use crate::error::{CodecError, Error};
+    use crate::error::Error;
     use crate::index::{Index, Multi};
     use crate::key::Key;
     use crate::prefix::encoded_prefix_range;
@@ -200,16 +204,17 @@ mod tests {
 
     impl Entity for Record {
         type Key<'a> = u32;
+        type Error = std::io::Error;
 
         fn key(&self) -> Self::Key<'_> {
             self.id
         }
 
-        fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
             Ok(vec![])
         }
 
-        fn from_bytes(_: &[u8]) -> Result<Self, CodecError> {
+        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
             Ok(Self { id: 0, indexed: 0 })
         }
     }

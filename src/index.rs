@@ -12,7 +12,7 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// # Unique index
 ///
 /// ```no_run
-/// # use collette::{CodecError, Entity};
+/// # use collette::Entity;
 /// #
 /// # struct User {
 /// #     id: u64,
@@ -21,16 +21,17 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// #
 /// # impl Entity for User {
 /// #     type Key<'a> = u64;
+/// #     type Error = std::convert::Infallible;
 /// #
 /// #     fn key(&self) -> Self::Key<'_> {
 /// #         self.id
 /// #     }
 /// #
-/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
 /// #         Ok(self.email.as_bytes().to_vec())
 /// #     }
 /// #
-/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+/// #     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
 /// #         Ok(Self {
 /// #             id: 0,
 /// #             email: String::from_utf8_lossy(bytes).into_owned(),
@@ -58,7 +59,7 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// several records can share the same extracted value.
 ///
 /// ```no_run
-/// # use collette::{CodecError, Entity};
+/// # use collette::Entity;
 /// #
 /// # #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// # enum Status {
@@ -78,16 +79,17 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// #
 /// # impl Entity for Task {
 /// #     type Key<'a> = u64;
+/// #     type Error = std::convert::Infallible;
 /// #
 /// #     fn key(&self) -> Self::Key<'_> {
 /// #         self.id
 /// #     }
 /// #
-/// #     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+/// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
 /// #         Ok(vec![self.status.encode()[0]])
 /// #     }
 /// #
-/// #     fn from_bytes(_bytes: &[u8]) -> Result<Self, CodecError> {
+/// #     fn from_bytes(_bytes: &[u8]) -> Result<Self, Self::Error> {
 /// #         Ok(Self {
 /// #             id: 0,
 /// #             status: Status::Open,
@@ -144,7 +146,7 @@ pub trait Index<Record: Entity> {
     {
         let new_skey = Self::Kind::store_key(Self::key(new), pk);
 
-        let mut store = db.open_store(Self::NAME)?;
+        let mut store = db.open_store(Self::NAME).map_err(Error::backend)?;
         if let Some(entity) = old {
             let old_skey = Self::Kind::store_key(Self::key(entity), pk);
 
@@ -152,15 +154,15 @@ pub trait Index<Record: Entity> {
                 return Ok(());
             }
 
-            store.remove(old_skey.encode())?;
+            store.remove(old_skey.encode()).map_err(Error::backend)?;
         }
 
         let skey = new_skey.encode();
-        if store.get(&skey)?.is_some() {
+        if store.get(&skey).map_err(Error::backend)?.is_some() {
             Err(Error::AlreadyExists(format!("{:?}", new_skey)))?
         }
 
-        store.set(skey, pk.encode())?;
+        store.set(skey, pk.encode()).map_err(Error::backend)?;
 
         Ok(())
     }
@@ -171,10 +173,10 @@ pub trait Index<Record: Entity> {
         pk: &Record::Key<'a>,
         item: &'a Record,
     ) -> Result<(), Error> {
-        let mut store = db.open_store(Self::NAME)?;
+        let mut store = db.open_store(Self::NAME).map_err(Error::backend)?;
         let skey = Self::Kind::store_key(Self::key(item), pk);
 
-        store.remove(skey.encode()).map_err(Error::Backend)
+        store.remove(skey.encode()).map_err(Error::backend)
     }
 }
 

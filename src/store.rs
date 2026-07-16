@@ -8,7 +8,6 @@
 //! End users should create a [`Collection`](crate::Collection) with a [`MultiStore`](crate::store::MultiStore)
 //! implementation and then call collection methods. This API shall never be used directly.
 
-use crate::error::BackendError;
 use crate::scan::Direction;
 use std::ops::RangeBounds;
 
@@ -18,10 +17,13 @@ use std::ops::RangeBounds;
 /// application code, prefer the collection API; `prepare`, `read`, and `write`
 /// are called by Collette.
 pub trait MultiStore {
+    /// Error returned by this backend.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Read-only transaction or snapshot handle.
-    type ReadHandle: MultiStoreReadHandle;
+    type ReadHandle: MultiStoreReadHandle<Error = Self::Error>;
     /// Write transaction handle.
-    type WriteHandle: MultiStoreWriteHandle;
+    type WriteHandle: MultiStoreWriteHandle<Error = Self::Error>;
 
     /// Initializes the given stores for a namespace.
     ///
@@ -32,68 +34,86 @@ pub trait MultiStore {
         &self,
         namespace: &'static str,
         stores: impl IntoIterator<Item = &'static str>,
-    ) -> Result<(), BackendError>;
+    ) -> Result<(), Self::Error>;
 
     /// Opens a read-only handle for the namespace.
     ///
     /// Collette calls this while serving collection reads and scans.
-    fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, BackendError>;
+    fn read(&self, namespace: &'static str) -> Result<Self::ReadHandle, Self::Error>;
 
     /// Opens a write handle for the namespace.
     ///
     /// Collette calls this for collection mutations. All writes to stores
     /// opened from this handle become visible atomically when
     /// [`commit`](MultiStoreWriteHandle::commit) succeeds.
-    fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, BackendError>;
+    fn write(&self, namespace: &'static str) -> Result<Self::WriteHandle, Self::Error>;
 }
 
 /// Read-only view of the stores in one namespace.
 pub trait MultiStoreReadHandle {
+    /// Error returned by this read handle.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Store type returned by this read handle.
-    type Store: ReadKVStore;
+    type Store: ReadKVStore<Error = Self::Error>;
 
     /// Opens one prepared store by name.
-    fn open_store(&self, name: &'static str) -> Result<Self::Store, BackendError>;
+    fn open_store(&self, name: &'static str) -> Result<Self::Store, Self::Error>;
 }
 
 /// Write transaction across all stores opened from one namespace.
 pub trait MultiStoreWriteHandle {
+    /// Error returned by this write handle.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Mutable store type returned by this write handle.
-    type Store<'a>: ReadWriteKVStore<'a>
+    type Store<'a>: ReadWriteKVStore<'a, Error = Self::Error>
     where
         Self: 'a;
 
     /// Opens one prepared store by name.
-    fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, BackendError>;
+    fn open_store(&mut self, name: &'static str) -> Result<Self::Store<'_>, Self::Error>;
 
     /// Commits all changes made through this handle.
-    fn commit(self) -> Result<(), BackendError>;
+    fn commit(self) -> Result<(), Self::Error>;
 }
 
 /// Store that can be read from and written to in the same transaction.
-pub trait ReadWriteKVStore<'a>: ReadKVStore + WriteKVStore<'a> {}
+pub trait ReadWriteKVStore<'a>:
+    ReadKVStore<Error = <Self as ReadWriteKVStore<'a>>::Error>
+    + WriteKVStore<'a, Error = <Self as ReadWriteKVStore<'a>>::Error>
+{
+    /// Error returned by this store.
+    type Error: std::error::Error + Send + Sync + 'static;
+}
 
 /// Mutable ordered key-value store.
 pub trait WriteKVStore<'a> {
+    /// Error returned by this store.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Sets or replaces a key-value pair.
-    fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), BackendError>;
+    fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), Self::Error>;
 
     /// Removes a key-value pair if it exists.
-    fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), BackendError>;
+    fn remove(&mut self, key: impl AsRef<[u8]>) -> Result<(), Self::Error>;
 }
 
 /// Read-only ordered key-value store.
 pub trait ReadKVStore {
+    /// Error returned by this store.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Iterator returned by [`scan`](Self::scan).
-    type Iter: Iterator<Item = Result<(Vec<u8>, Vec<u8>), BackendError>>;
+    type Iter: Iterator<Item = Result<(Vec<u8>, Vec<u8>), Self::Error>>;
 
     /// Gets a value by exact key.
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError>;
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, Self::Error>;
 
     /// Scans key-value pairs in byte-key order inside `range`.
     fn scan(
         self,
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
-    ) -> Result<Self::Iter, BackendError>;
+    ) -> Result<Self::Iter, Self::Error>;
 }

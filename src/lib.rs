@@ -23,7 +23,6 @@
 //! use collette::backend::memory::InMemoryMultiStore;
 //! use collette::collection::collection;
 //! use collette::entity::Entity;
-//! use collette::error::CodecError;
 //! use collette::index::{Index, Unique};
 //!
 //! #[derive(Clone)]
@@ -34,16 +33,17 @@
 //!
 //! impl Entity for User {
 //!     type Key<'a> = u64;
+//!     type Error = std::convert::Infallible;
 //!
 //!     fn key(&self) -> Self::Key<'_> {
 //!         self.id
 //!     }
 //!
-//!     fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+//!     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
 //!         Ok(self.email.as_bytes().to_vec())
 //!     }
 //!
-//!     fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+//!     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
 //!         Ok(Self {
 //!             id: 0,
 //!             email: String::from_utf8_lossy(bytes).into_owned(),

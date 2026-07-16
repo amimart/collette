@@ -107,7 +107,7 @@ impl<I, Head, Tail, Proof> ContainsIndex<I, There<Proof>> for Cons<Head, Tail> w
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{BackendError, CodecError, Error};
+    use crate::error::{BackendError, Error};
     use crate::index::Unique;
     use crate::scan::Direction;
     use crate::store::{MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore, WriteKVStore};
@@ -120,16 +120,17 @@ mod tests {
 
     impl Entity for Record {
         type Key<'a> = u32;
+        type Error = std::io::Error;
 
         fn key(&self) -> u32 {
             self.0
         }
 
-        fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
             todo!()
         }
 
-        fn from_bytes(_bytes: &[u8]) -> Result<Self, CodecError> {
+        fn from_bytes(_bytes: &[u8]) -> Result<Self, Self::Error> {
             todo!()
         }
     }
@@ -157,7 +158,7 @@ mod tests {
                     _old: Option<&Record>,
                     _new: &Record,
                 ) -> Result<(), Error> {
-                    db.open_store(Self::NAME)?;
+                    db.open_store(Self::NAME).map_err(Error::backend)?;
                     Ok(())
                 }
                 fn remove<DB: MultiStoreWriteHandle>(
@@ -165,7 +166,7 @@ mod tests {
                     _pk: &u32,
                     _item: &Record,
                 ) -> Result<(), Error> {
-                    db.open_store(Self::NAME)?;
+                    db.open_store(Self::NAME).map_err(Error::backend)?;
                     Ok(())
                 }
             }
@@ -205,7 +206,9 @@ mod tests {
     struct NoopStore;
 
     impl ReadKVStore for NoopStore {
+        type Error = BackendError;
         type Iter = std::iter::Empty<Result<(Vec<u8>, Vec<u8>), BackendError>>;
+
         fn get(&self, _: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
             Ok(None)
         }
@@ -218,6 +221,8 @@ mod tests {
         }
     }
     impl<'a> WriteKVStore<'a> for NoopStore {
+        type Error = BackendError;
+
         fn set(&mut self, _: impl AsRef<[u8]>, _: impl AsRef<[u8]>) -> Result<(), BackendError> {
             Ok(())
         }
@@ -225,7 +230,9 @@ mod tests {
             Ok(())
         }
     }
-    impl<'a> ReadWriteKVStore<'a> for NoopStore {}
+    impl<'a> ReadWriteKVStore<'a> for NoopStore {
+        type Error = BackendError;
+    }
 
     struct Spy(Vec<String>);
 
@@ -239,8 +246,10 @@ mod tests {
     }
 
     impl MultiStoreWriteHandle for Spy {
+        type Error = BackendError;
         type Store<'a> = NoopStore;
-        fn open_store(&mut self, name: &str) -> Result<NoopStore, BackendError> {
+
+        fn open_store(&mut self, name: &'static str) -> Result<NoopStore, BackendError> {
             self.0.push(name.to_string());
             Ok(NoopStore)
         }

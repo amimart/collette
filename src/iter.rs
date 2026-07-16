@@ -60,15 +60,11 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|res| {
-            res.map_err(Error::Backend).and_then(|(cursor, pk)| {
-                let record_bytes =
-                    self.primary_store
-                        .get(&pk)?
-                        .ok_or(Error::Unexpected(format!(
-                            "primary key from index not found: {:?}",
-                            pk
-                        )))?;
-                let record = Record::from_bytes(&record_bytes)?;
+            res.map_err(Error::backend).and_then(|(cursor, pk)| {
+                let record_bytes = self.primary_store.get(&pk).map_err(Error::backend)?.ok_or(
+                    Error::Unexpected(format!("primary key from index not found: {:?}", pk)),
+                )?;
+                let record = Record::from_bytes(&record_bytes).map_err(Error::codec)?;
 
                 Ok(IndexEntry {
                     record,

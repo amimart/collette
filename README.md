@@ -37,7 +37,7 @@ collette = { version = "0.1", features = ["redb"] }
 
 ```rust
 use collette::backend::memory::InMemoryMultiStore;
-use collette::{collection, CodecError, Entity};
+use collette::{collection, Entity};
 
 fn main() -> Result<(), collette::Error> {
     let db = InMemoryMultiStore::new();
@@ -78,12 +78,13 @@ collette::impl_enum_key!(Status as u8 {
 // Implement Entity for User so Collette can persist it.
 impl Entity for User {
     type Key<'a> = u64;
+    type Error = std::convert::Infallible;
 
     fn key(&self) -> Self::Key<'_> {
         self.id
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
         let status = match self.status {
             Status::Inactive => "0",
             Status::Active => "1",
@@ -91,7 +92,7 @@ impl Entity for User {
         Ok(format!("{}|{}|{}|{}", self.id, self.created_at, status, self.email).into_bytes())
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         let text = String::from_utf8_lossy(bytes);
         let parts: Vec<_> = text.splitn(4, '|').collect();
         Ok(Self {
