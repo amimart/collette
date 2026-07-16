@@ -3,6 +3,7 @@
 ℹ️ **coll**_ection_ + **ette** (i.e. meaning lightweight)
 
 ![Status](https://img.shields.io/badge/status-🚧%20WIP-yellow?style=for-the-badge)
+[![codecov](https://codecov.io/github/amimart/collette/graph/badge.svg?token=5A5VOWFLMW)](https://codecov.io/github/amimart/collette)
 [![lint](https://img.shields.io/github/actions/workflow/status/amimart/collette/lint.yaml?label=lint&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/lint.yaml)
 [![build](https://img.shields.io/github/actions/workflow/status/amimart/collette/build.yaml?label=build&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/build.yaml)
 [![test](https://img.shields.io/github/actions/workflow/status/amimart/collette/test.yaml?label=test&style=for-the-badge&logo=github)](https://github.com/amimart/collette/actions/workflows/test.yaml)
