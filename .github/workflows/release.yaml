@@ -150,7 +150,7 @@ jobs:
         env:
           TAG: ${{ steps.plan.outputs.tag }}
         run: |
-          git add CHANGELOG.md
+          git add Cargo.toml Cargo.lock CHANGELOG.md
           git commit -S -m "chore(release): ${TAG}"
 
       - name: Tag release

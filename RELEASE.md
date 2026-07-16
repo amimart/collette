@@ -4,9 +4,9 @@ Collette releases are cut manually from the `main` branch.
 
 ## Versioning
 
-The crate version in `Cargo.toml` is expected to be up to date before the
-release workflow runs. The workflow checks that version against the next version
-computed from Conventional Commits since the latest `v*` tag:
+The release workflow updates the crate version in `Cargo.toml` and `Cargo.lock`
+to the next version computed from Conventional Commits since the latest `v*`
+tag:
 
 - `fix:` and `perf:` bump the patch version.
 - `feat:` bumps the minor version.
@@ -52,8 +52,8 @@ Conventional Commits.
 3. Keep `dry_run` enabled first to validate the computed release.
 4. Run it again with `dry_run` disabled.
 
-The workflow commits `CHANGELOG.md` back to `main`, creates a `vX.Y.Z` tag,
-pushes the tag, and creates the GitHub Release.
+The workflow commits `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md` back to
+`main`, creates a `vX.Y.Z` tag, pushes the tag, and creates the GitHub Release.
 
 The pushed tag triggers the `Publish` workflow. That workflow checks that the
 tag version matches `Cargo.toml`, then publishes the crate to crates.io.
