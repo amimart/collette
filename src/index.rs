@@ -1,9 +1,9 @@
-use crate::entity::Entity;
 use crate::error::Error;
+use crate::item::Item;
 use crate::key::{AppendKey, Key};
 use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 
-/// A secondary lookup maintained for an [`Entity`].
+/// A secondary lookup maintained for a record type that implements [`Item`].
 ///
 /// An index extracts an ordered [`Key`] from a record and chooses an
 /// [`IndexKind`] that controls whether that key is unique or can point to many
@@ -12,14 +12,14 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// # Unique index
 ///
 /// ```no_run
-/// # use collette::Entity;
+/// # use collette::Item;
 /// #
 /// # struct User {
 /// #     id: u64,
 /// #     email: String,
 /// # }
 /// #
-/// # impl Entity for User {
+/// # impl Item for User {
 /// #     type Key<'a> = u64;
 /// #     type Error = std::convert::Infallible;
 /// #
@@ -55,11 +55,11 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 ///
 /// # Multi index
 ///
-/// Multi indexes append the entity primary key to the stored index key, so
+/// Multi indexes append the record primary key to the stored index key, so
 /// several records can share the same extracted value.
 ///
 /// ```no_run
-/// # use collette::Entity;
+/// # use collette::Item;
 /// #
 /// # #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// # enum Status {
@@ -77,7 +77,7 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 /// #     status: Status,
 /// # }
 /// #
-/// # impl Entity for Task {
+/// # impl Item for Task {
 /// #     type Key<'a> = u64;
 /// #     type Error = std::convert::Infallible;
 /// #
@@ -111,7 +111,7 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 ///     }
 /// }
 /// ```
-pub trait Index<Record: Entity> {
+pub trait Index<Record: Item> {
     /// The logical index key extracted from a record.
     ///
     /// This type may borrow from the record, which keeps index maintenance
@@ -129,7 +129,7 @@ pub trait Index<Record: Entity> {
     const NAME: &'static str;
 
     /// Extracts the logical index key from a record.
-    fn key(entity: &Record) -> Self::Key<'_>;
+    fn key(record: &Record) -> Self::Key<'_>;
 
     /// Updates this index after a record insert, save, or update.
     ///
@@ -147,8 +147,8 @@ pub trait Index<Record: Entity> {
         let new_skey = Self::Kind::store_key(Self::key(new), pk);
 
         let mut store = db.open_store(Self::NAME).map_err(Error::backend)?;
-        if let Some(entity) = old {
-            let old_skey = Self::Kind::store_key(Self::key(entity), pk);
+        if let Some(item) = old {
+            let old_skey = Self::Kind::store_key(Self::key(item), pk);
 
             if old_skey == new_skey {
                 return Ok(());

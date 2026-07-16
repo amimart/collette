@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::ops::{Bound, RangeBounds};
 use std::rc::Rc;
 
-use crate::entity::Entity;
 use crate::error::{BackendError, Error};
 use crate::index_registry::IndexRegistry;
+use crate::item::Item;
 use crate::scan::Direction;
 use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
@@ -333,7 +333,7 @@ impl SpyRegistry {
     }
 }
 
-impl<T: Entity> IndexRegistry<T> for SpyRegistry {
+impl<T: Item> IndexRegistry<T> for SpyRegistry {
     fn store_names(_out: &mut Vec<&'static str>) {}
 
     fn update<'a, DB: MultiStoreWriteHandle>(

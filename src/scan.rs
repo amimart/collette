@@ -4,9 +4,9 @@
 //! [`IndexScan::iter`] opens the backend stores and returns an iterator.
 
 use crate::bounds::{IntoScanBounds, ScanBound, ScanRange};
-use crate::entity::Entity;
 use crate::error::Error;
 use crate::index::{Index, IndexKind, StoreKey};
+use crate::item::Item;
 use crate::iter::IndexIterator;
 use crate::key::Key;
 use crate::prefix::{Prefix, PrefixOrKey, Prefixable};
@@ -32,7 +32,7 @@ pub struct IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: 'a,
     ReadHandle: MultiStoreReadHandle,
-    Record: Entity,
+    Record: Item,
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
@@ -49,7 +49,7 @@ where
 impl<'a, ReadHandle, Record, Idx> IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
-    Record: Entity,
+    Record: Item,
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
@@ -157,7 +157,7 @@ impl<'a, ReadHandle, Record, Idx, KeyPrefix>
     for IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
-    Record: Entity,
+    Record: Item,
     Idx: Index<Record>,
     KeyPrefix: Prefix,
     StoreKey<'a, 'a, Idx, Record::Key<'a>, Record>: Key + Prefixable<KeyPrefix>,
@@ -188,9 +188,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::Entity;
     use crate::error::Error;
     use crate::index::{Index, Multi};
+    use crate::item::Item;
     use crate::key::Key;
     use crate::prefix::encoded_prefix_range;
     use crate::store::MultiStore;
@@ -202,7 +202,7 @@ mod tests {
         indexed: u32,
     }
 
-    impl Entity for Record {
+    impl Item for Record {
         type Key<'a> = u32;
         type Error = std::io::Error;
 
@@ -226,8 +226,8 @@ mod tests {
         type Kind<'a> = Multi;
         const NAME: &'static str = "number";
 
-        fn key(entity: &Record) -> Self::Key<'_> {
-            (entity.indexed,)
+        fn key(item: &Record) -> Self::Key<'_> {
+            (item.indexed,)
         }
     }
 

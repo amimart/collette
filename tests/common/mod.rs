@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
 use collette::collection::{collection, Collection};
-use collette::entity::Entity;
 use collette::error::Error;
 use collette::impl_enum_key;
 use collette::index::{Index, Multi, Unique};
 use collette::index_registry::{Cons, Nil};
+use collette::item::Item;
 use collette::scan::{Direction, IndexScan, PrefixScan};
 use collette::store::{MultiStore, MultiStoreReadHandle};
 
@@ -482,7 +482,7 @@ pub struct User {
     pub seat: u16,
 }
 
-impl Entity for User {
+impl Item for User {
     type Key<'a> = u64;
     type Error = std::io::Error;
 
@@ -531,7 +531,7 @@ pub struct Membership {
     pub label: String,
 }
 
-impl Entity for Membership {
+impl Item for Membership {
     type Key<'a> = (&'a str, u64);
     type Error = std::io::Error;
 
@@ -576,8 +576,8 @@ impl Index<User> for UniqueEmail {
     type Kind<'a> = Unique;
     const NAME: &'static str = "unique_email";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        entity.email.as_str()
+    fn key(item: &User) -> Self::Key<'_> {
+        item.email.as_str()
     }
 }
 
@@ -586,8 +586,8 @@ impl Index<User> for UniqueRegionHandle {
     type Kind<'a> = Unique;
     const NAME: &'static str = "unique_region_handle";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        (entity.region, entity.handle.as_str())
+    fn key(item: &User) -> Self::Key<'_> {
+        (item.region, item.handle.as_str())
     }
 }
 
@@ -596,8 +596,8 @@ impl Index<User> for UniqueRegionPlanHandle {
     type Kind<'a> = Unique;
     const NAME: &'static str = "unique_region_plan_handle";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        (entity.region, entity.plan, entity.handle.as_str())
+    fn key(item: &User) -> Self::Key<'_> {
+        (item.region, item.plan, item.handle.as_str())
     }
 }
 
@@ -606,8 +606,8 @@ impl Index<User> for ByStatus {
     type Kind<'a> = Multi;
     const NAME: &'static str = "by_status";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        (entity.status,)
+    fn key(item: &User) -> Self::Key<'_> {
+        (item.status,)
     }
 }
 
@@ -616,8 +616,8 @@ impl Index<User> for ByRegionStatus {
     type Kind<'a> = Multi;
     const NAME: &'static str = "by_region_status";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        (entity.region, entity.status)
+    fn key(item: &User) -> Self::Key<'_> {
+        (item.region, item.status)
     }
 }
 
@@ -626,8 +626,8 @@ impl Index<User> for ByTeamStatusSeat {
     type Kind<'a> = Multi;
     const NAME: &'static str = "by_team_status_seat";
 
-    fn key(entity: &User) -> Self::Key<'_> {
-        (entity.team.as_str(), entity.status, entity.seat)
+    fn key(item: &User) -> Self::Key<'_> {
+        (item.team.as_str(), item.status, item.seat)
     }
 }
 
@@ -748,7 +748,7 @@ fn scan_handles<'a, ReadHandle, Idx>(scan: IndexScan<'a, ReadHandle, User, Idx>)
 where
     ReadHandle: MultiStoreReadHandle,
     Idx: Index<User>,
-    for<'b> Idx::Kind<'b>: collette::index::IndexKind<Idx::Key<'b>, <User as Entity>::Key<'b>>,
+    for<'b> Idx::Kind<'b>: collette::index::IndexKind<Idx::Key<'b>, <User as Item>::Key<'b>>,
 {
     scan.iter()
         .unwrap()
