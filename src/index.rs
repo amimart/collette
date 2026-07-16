@@ -146,7 +146,7 @@ pub trait Index<Record: Entity> {
     {
         let new_skey = Self::Kind::store_key(Self::key(new), pk);
 
-        let mut store = db.open_store(Self::NAME)?;
+        let mut store = db.open_store(Self::NAME).map_err(Error::backend)?;
         if let Some(entity) = old {
             let old_skey = Self::Kind::store_key(Self::key(entity), pk);
 
@@ -154,15 +154,15 @@ pub trait Index<Record: Entity> {
                 return Ok(());
             }
 
-            store.remove(old_skey.encode())?;
+            store.remove(old_skey.encode()).map_err(Error::backend)?;
         }
 
         let skey = new_skey.encode();
-        if store.get(&skey)?.is_some() {
+        if store.get(&skey).map_err(Error::backend)?.is_some() {
             Err(Error::AlreadyExists(format!("{:?}", new_skey)))?
         }
 
-        store.set(skey, pk.encode())?;
+        store.set(skey, pk.encode()).map_err(Error::backend)?;
 
         Ok(())
     }
@@ -173,10 +173,10 @@ pub trait Index<Record: Entity> {
         pk: &Record::Key<'a>,
         item: &'a Record,
     ) -> Result<(), Error> {
-        let mut store = db.open_store(Self::NAME)?;
+        let mut store = db.open_store(Self::NAME).map_err(Error::backend)?;
         let skey = Self::Kind::store_key(Self::key(item), pk);
 
-        store.remove(skey.encode()).map_err(Error::Backend)
+        store.remove(skey.encode()).map_err(Error::backend)
     }
 }
 

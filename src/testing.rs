@@ -66,6 +66,7 @@ pub struct MockStore {
 }
 
 impl ReadKVStore for MockStore {
+    type Error = BackendError;
     type Iter = std::iter::Empty<Result<(Vec<u8>, Vec<u8>), BackendError>>;
 
     fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
@@ -89,6 +90,8 @@ impl ReadKVStore for MockStore {
 }
 
 impl<'a> WriteKVStore<'a> for MockStore {
+    type Error = BackendError;
+
     fn set(&mut self, key: impl AsRef<[u8]>, value: impl AsRef<[u8]>) -> Result<(), BackendError> {
         self.log
             .borrow_mut()
@@ -103,7 +106,9 @@ impl<'a> WriteKVStore<'a> for MockStore {
     }
 }
 
-impl<'a> ReadWriteKVStore<'a> for MockStore {}
+impl<'a> ReadWriteKVStore<'a> for MockStore {
+    type Error = BackendError;
+}
 
 // ── MockWriteHandle ───────────────────────────────────────────────────────────
 
@@ -118,6 +123,7 @@ pub struct MockWriteHandle {
 }
 
 impl MultiStoreWriteHandle for MockWriteHandle {
+    type Error = BackendError;
     type Store<'a> = MockStore;
 
     fn open_store(&mut self, name: &'static str) -> Result<MockStore, BackendError> {
@@ -149,6 +155,7 @@ pub struct MockReadHandle {
 }
 
 impl MultiStoreReadHandle for MockReadHandle {
+    type Error = BackendError;
     type Store = MockStore;
 
     fn open_store(&self, name: &'static str) -> Result<MockStore, BackendError> {
@@ -245,6 +252,7 @@ impl MockDb {
 }
 
 impl MultiStore for MockDb {
+    type Error = BackendError;
     type ReadHandle = MockReadHandle;
     type WriteHandle = MockWriteHandle;
 

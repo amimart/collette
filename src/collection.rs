@@ -67,20 +67,22 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
-            if store.get(&enc_pk)?.is_some() {
+            if store.get(&enc_pk).map_err(Error::backend)?.is_some() {
                 Err(Error::AlreadyExists(format!("{:?}", pk)))?
             }
 
-            store.set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
         }
 
         Indexes::update(&mut tx, &pk, None, value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Updates an existing record.
@@ -93,12 +95,13 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let old = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let old = store
-                .get(&enc_pk)?
+                .get(&enc_pk)
+                .map_err(Error::backend)?
                 .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
@@ -106,13 +109,15 @@ where
                 Err(Error::NotFound(format!("{:?}", pk)))?
             }
 
-            store.set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
             old
         };
 
         Indexes::update(&mut tx, &pk, old.as_ref(), value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Inserts or updates a record.
@@ -126,22 +131,25 @@ where
         let pk = value.key();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let old = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let old = store
-                .get(&enc_pk)?
+                .get(&enc_pk)
+                .map_err(Error::backend)?
                 .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
-            store.set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)?;
+            store
+                .set(&enc_pk, &value.to_bytes().map_err(Error::codec)?)
+                .map_err(Error::backend)?;
             old
         };
 
         Indexes::update(&mut tx, &pk, old.as_ref(), value)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Removes a record by primary key.
@@ -159,12 +167,13 @@ where
         let pk = key.borrow();
         let enc_pk = pk.encode();
 
-        let mut tx = self.db.write(self.name)?;
+        let mut tx = self.db.write(self.name).map_err(Error::backend)?;
         let record = {
-            let mut store = tx.open_store(Self::MAIN_STORE)?;
+            let mut store = tx.open_store(Self::MAIN_STORE).map_err(Error::backend)?;
 
             let record = store
-                .get(enc_pk)?
+                .get(enc_pk)
+                .map_err(Error::backend)?
                 .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
                 .transpose()?;
 
@@ -173,13 +182,15 @@ where
                 None => return Ok(()),
             };
 
-            store.remove(key.borrow().encode())?;
+            store
+                .remove(key.borrow().encode())
+                .map_err(Error::backend)?;
             record
         };
 
         Indexes::remove(&mut tx, &record.key(), &record)?;
 
-        tx.commit().map_err(Error::Backend)
+        tx.commit().map_err(Error::backend)
     }
 
     /// Retrieves a record by primary key.
@@ -193,9 +204,12 @@ where
         Record: 'a,
     {
         self.db
-            .read(self.name)?
-            .open_store(Self::MAIN_STORE)?
-            .get(key.borrow().encode())?
+            .read(self.name)
+            .map_err(Error::backend)?
+            .open_store(Self::MAIN_STORE)
+            .map_err(Error::backend)?
+            .get(key.borrow().encode())
+            .map_err(Error::backend)?
             .map(|bytes| Record::from_bytes(&bytes).map_err(Error::codec))
             .transpose()
     }
@@ -271,7 +285,10 @@ where
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexScan::new(Self::MAIN_STORE, self.db.read(self.name)?))
+        Ok(IndexScan::new(
+            Self::MAIN_STORE,
+            self.db.read(self.name).map_err(Error::backend)?,
+        ))
     }
 }
 

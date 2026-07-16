@@ -109,9 +109,13 @@ where
 
         Ok(IndexIterator::new(
             self.read_handle
-                .open_store(Idx::NAME)?
-                .scan((left, right), self.direction)?,
-            self.read_handle.open_store(self.collection_name)?,
+                .open_store(Idx::NAME)
+                .map_err(Error::backend)?
+                .scan((left, right), self.direction)
+                .map_err(Error::backend)?,
+            self.read_handle
+                .open_store(self.collection_name)
+                .map_err(Error::backend)?,
         ))
     }
 

@@ -33,6 +33,10 @@ pub enum Error {
 }
 
 impl Error {
+    pub(crate) fn backend(e: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Backend(BackendError::new(e))
+    }
+
     pub(crate) fn codec(e: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Codec(Box::new(e))
     }
@@ -43,7 +47,6 @@ impl Error {
 pub struct BackendError(BoxError);
 
 impl BackendError {
-    #[cfg(any(test, feature = "redb"))]
     pub(crate) fn new(e: impl std::error::Error + Send + Sync + 'static) -> Self {
         BackendError(Box::new(e))
     }
