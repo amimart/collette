@@ -17,8 +17,10 @@ path = "src/lib.rs"
 default = ["memory"]
 memory = []
 redb = ["dep:redb"]
+rocksdb = ["dep:rocksdb"]
 
 [dependencies]
 redb = { version = "4.1.0", optional = true }
+rocksdb = { version = "0.24.0", optional = true }
 smallvec = "1.15.1"
 thiserror = "2.0.18"
