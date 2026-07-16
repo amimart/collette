@@ -14,8 +14,8 @@ use crate::index_registry::IndexRegistry;
 use crate::item::Item;
 use crate::scan::Direction;
 use crate::store::{
-    MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore,
-    WriteKVStore,
+    KVEntry, MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore,
+    ReadWriteKVStore, WriteKVStore,
 };
 
 // ── Error helpers ─────────────────────────────────────────────────────────────
@@ -65,11 +65,28 @@ pub struct MockStore {
     data: HashMap<Vec<u8>, Vec<u8>>,
 }
 
+pub struct MockEntry {
+    key: Vec<u8>,
+    value: Vec<u8>,
+}
+
+impl KVEntry for MockEntry {
+    fn key(&self) -> &[u8] {
+        &self.key
+    }
+
+    fn value(&self) -> &[u8] {
+        &self.value
+    }
+}
+
 impl ReadKVStore for MockStore {
     type Error = BackendError;
-    type Iter = std::iter::Empty<Result<(Vec<u8>, Vec<u8>), BackendError>>;
+    type Value<'a> = Vec<u8>;
+    type Entry = MockEntry;
+    type Iter = std::iter::Empty<Result<MockEntry, BackendError>>;
 
-    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+    fn get(&self, key: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, BackendError> {
         let key = key.as_ref().to_vec();
         self.log.borrow_mut().gets.push(key.clone());
         Ok(self.data.get(&key).cloned())
