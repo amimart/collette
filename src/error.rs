@@ -54,3 +54,17 @@ impl Display for BackendError {
         self.0.fmt(f)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+    use std::error::Error as _;
+
+    #[test]
+    fn codec_error_preserves_user_error_as_source() {
+        let err = Error::codec(std::io::Error::other("bad bytes"));
+
+        assert_eq!(err.to_string(), "serialization error: bad bytes");
+        assert_eq!(err.source().unwrap().to_string(), "bad bytes");
+    }
+}
