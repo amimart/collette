@@ -7,7 +7,7 @@
 //!
 //! The crate is built around a few small contracts:
 //!
-//! - [`Item`] owns record serialization and primary-key extraction.
+//! - [`Item`] defines record serialization and primary-key extraction.
 //! - [`Key`] defines the ordered byte encoding used by primary keys, index keys,
 //!   scan bounds, and cursors.
 //! - [`Index`] describes a secondary lookup over an item.
@@ -112,7 +112,7 @@ pub mod index;
 #[doc(hidden)]
 pub mod index_registry;
 mod inline_vec;
-/// Persistable record contract.
+/// Collection item contract.
 pub mod item;
 /// Iterator types returned by index scans.
 pub mod iter;

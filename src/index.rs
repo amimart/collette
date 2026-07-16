@@ -3,7 +3,7 @@ use crate::item::Item;
 use crate::key::{AppendKey, Key};
 use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 
-/// A secondary lookup maintained for an [`Item`].
+/// A secondary lookup maintained for a record type that implements [`Item`].
 ///
 /// An index extracts an ordered [`Key`] from a record and chooses an
 /// [`IndexKind`] that controls whether that key is unique or can point to many
@@ -55,7 +55,7 @@ use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 ///
 /// # Multi index
 ///
-/// Multi indexes append the item primary key to the stored index key, so
+/// Multi indexes append the record primary key to the stored index key, so
 /// several records can share the same extracted value.
 ///
 /// ```no_run
@@ -129,7 +129,7 @@ pub trait Index<Record: Item> {
     const NAME: &'static str;
 
     /// Extracts the logical index key from a record.
-    fn key(item: &Record) -> Self::Key<'_>;
+    fn key(record: &Record) -> Self::Key<'_>;
 
     /// Updates this index after a record insert, save, or update.
     ///

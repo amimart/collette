@@ -10,7 +10,7 @@
 Typed collections, maintained indexes, and ordered scans over embedded key-value stores. Collette is:
 
 - **Lightweight:** Collette adds structure to ordered KV storage through zero-cost abstractions.
-- **Typed:** define Rust items, primary keys, and indexes with compile-time checks.
+- **Typed:** define Rust record types, primary keys, and indexes with compile-time checks.
 - **Backend-agnostic:** storage is provided by pluggable multistore backends, while application code works with collections and scans.
 
 Collette is not an ORM, query planner, SQL layer, or database server.
@@ -119,7 +119,7 @@ Application code should not call backend traits directly. Pick a backend, build 
 
 ## Indexes
 
-Indexes are declared as Rust types implementing `Index<Item>`.
+Indexes are declared as Rust types implementing `Index<Record>` for a record type that implements `Item`.
 
 Collette currently supports two index kinds:
 

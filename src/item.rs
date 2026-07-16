@@ -1,8 +1,8 @@
 use crate::key::Key;
 
-/// A persistable record stored inside a Collette collection.
+/// Contract for a Rust type stored as an item in a Collette collection.
 ///
-/// An item defines:
+/// An item implementation defines:
 ///
 /// - its primary key type;
 /// - how its primary key is accessed;

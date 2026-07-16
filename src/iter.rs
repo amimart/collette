@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 
 /// One record returned from an index scan.
 pub struct IndexEntry<Record> {
-    /// The decoded item loaded from the collection primary store.
+    /// The decoded record loaded from the collection primary store.
     pub record: Record,
     /// Cursor for resuming a scan after this entry.
     pub key: Cursor,
@@ -23,7 +23,7 @@ pub struct Cursor(Vec<u8>);
 /// Iterator over records matched by a secondary index scan.
 ///
 /// Each index entry stores a primary key; the iterator follows that key into the
-/// collection's primary store and decodes the item before yielding it.
+/// collection's primary store and decodes the record before yielding it.
 pub struct IndexIterator<Store, Record>
 where
     Store: ReadKVStore,
