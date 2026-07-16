@@ -96,7 +96,7 @@
 
 pub use collection::{collection, Collection, CollectionBuilder};
 pub use entity::Entity;
-pub use error::{BackendError, Error};
+pub use error::{BackendError, CodecError, Error};
 pub use index::{Index, Multi, Unique};
 pub use key::{Key, KeySize};
 pub use scan::{Direction, IndexScan, PrefixScan};
