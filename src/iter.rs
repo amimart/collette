@@ -68,7 +68,7 @@ where
                             "primary key from index not found: {:?}",
                             pk
                         )))?;
-                let record = Record::from_bytes(&record_bytes)?;
+                let record = Record::from_bytes(&record_bytes).map_err(Error::codec)?;
 
                 Ok(IndexEntry {
                     record,

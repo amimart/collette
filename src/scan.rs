@@ -185,7 +185,7 @@ where
 mod tests {
     use super::*;
     use crate::entity::Entity;
-    use crate::error::{CodecError, Error};
+    use crate::error::Error;
     use crate::index::{Index, Multi};
     use crate::key::Key;
     use crate::prefix::encoded_prefix_range;
@@ -200,16 +200,17 @@ mod tests {
 
     impl Entity for Record {
         type Key<'a> = u32;
+        type Error = std::io::Error;
 
         fn key(&self) -> Self::Key<'_> {
             self.id
         }
 
-        fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
             Ok(vec![])
         }
 
-        fn from_bytes(_: &[u8]) -> Result<Self, CodecError> {
+        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
             Ok(Self { id: 0, indexed: 0 })
         }
     }

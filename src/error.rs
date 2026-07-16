@@ -2,6 +2,8 @@
 
 use std::fmt::Display;
 
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
 /// Error returned by collection-level operations.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -23,16 +25,22 @@ pub enum Error {
 
     /// Error reported by an entity codec.
     #[error("serialization error: {0}")]
-    Codec(#[from] CodecError),
+    Codec(#[source] BoxError),
 
     /// Internal invariant failure.
     #[error("unexpected error: {0}")]
     Unexpected(String),
 }
 
+impl Error {
+    pub(crate) fn codec(e: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Codec(Box::new(e))
+    }
+}
+
 /// Type-erased error returned by a [`MultiStore`](crate::store::MultiStore) backend.
 #[derive(Debug, thiserror::Error)]
-pub struct BackendError(Box<dyn std::error::Error + Send + Sync>);
+pub struct BackendError(BoxError);
 
 impl BackendError {
     #[cfg(any(test, feature = "redb"))]
@@ -42,23 +50,6 @@ impl BackendError {
 }
 
 impl Display for BackendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-/// Type-erased error returned by [`Entity`](crate::Entity) serialization.
-#[derive(Debug, thiserror::Error)]
-pub struct CodecError(Box<dyn std::error::Error + Send + Sync>);
-
-impl CodecError {
-    #[cfg(test)]
-    pub(crate) fn new(e: impl std::error::Error + Send + Sync + 'static) -> Self {
-        CodecError(Box::new(e))
-    }
-}
-
-impl Display for CodecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }

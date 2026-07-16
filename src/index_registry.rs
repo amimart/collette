@@ -107,7 +107,7 @@ impl<I, Head, Tail, Proof> ContainsIndex<I, There<Proof>> for Cons<Head, Tail> w
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{BackendError, CodecError, Error};
+    use crate::error::{BackendError, Error};
     use crate::index::Unique;
     use crate::scan::Direction;
     use crate::store::{MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore, WriteKVStore};
@@ -120,16 +120,17 @@ mod tests {
 
     impl Entity for Record {
         type Key<'a> = u32;
+        type Error = std::io::Error;
 
         fn key(&self) -> u32 {
             self.0
         }
 
-        fn to_bytes(&self) -> Result<Vec<u8>, CodecError> {
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
             todo!()
         }
 
-        fn from_bytes(_bytes: &[u8]) -> Result<Self, CodecError> {
+        fn from_bytes(_bytes: &[u8]) -> Result<Self, Self::Error> {
             todo!()
         }
     }
