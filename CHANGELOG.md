@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.2.0 - 2026-07-16
+
+### Breaking Changes
+
+* ✨ Simplify public error API by @amimart in <https://github.com/amimart/collette/pull/21>
+* ♻️ Rename Entity to Item by @amimart in <https://github.com/amimart/collette/pull/22>
+* ✨ Zero-alloc KVStore by @amimart in <https://github.com/amimart/collette/pull/23>
+
+### Bug Fixes
+
+* 🏗️ fix(release): update cargo manifest version by @amimart in <https://github.com/amimart/collette/pull/28>
+
+### Other Changes
+
+* 📝 Fine tune release notes by @amimart in <https://github.com/amimart/collette/pull/20>
+* 🏗 Add Codecov by @amimart in <https://github.com/amimart/collette/pull/24>
+* 📝 Add codecov badge to readme by @amimart in <https://github.com/amimart/collette/pull/25>
+* 📝 Update codecov badge by @amimart in <https://github.com/amimart/collette/pull/26>
+* 🏗️ Allow fail coverage upload by @amimart in <https://github.com/amimart/collette/pull/27>
+* ci(lint): allow duplicate headers in md by @amimart in <https://github.com/amimart/collette/pull/29>
+
+**Full Changelog**: <https://github.com/amimart/collette/compare/v0.1.0...v0.2.0>
+
 ## v0.1.0 - 2026-07-09
 
 ### Breaking Changes
