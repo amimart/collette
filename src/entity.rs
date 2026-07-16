@@ -6,7 +6,8 @@ use crate::key::Key;
 ///
 /// - its primary key type;
 /// - how its primary key is accessed;
-/// - how it is encoded and decoded from storage bytes.
+/// - how it is encoded and decoded from storage bytes;
+/// - which error type its codec returns.
 ///
 /// # Examples
 ///
@@ -50,7 +51,8 @@ pub trait Entity: Sized {
     ///
     /// Use your codec's native error type here, for example
     /// `serde_json::Error`, `bincode::error::DecodeError`, or an application
-    /// error enum.
+    /// error enum. Collection operations type-erase this into
+    /// [`Error::Codec`](crate::Error::Codec) when returning a Collette error.
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Returns the primary key of the entity.
