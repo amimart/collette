@@ -110,7 +110,9 @@ mod tests {
     use crate::error::{BackendError, Error};
     use crate::index::Unique;
     use crate::scan::Direction;
-    use crate::store::{MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore, WriteKVStore};
+    use crate::store::{
+        KVEntry, MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore, WriteKVStore,
+    };
     use std::ops::RangeBounds;
 
     // ── Minimal item ────────────────────────────────────────────────────────
@@ -204,12 +206,25 @@ mod tests {
     // Records which store names were opened; that is how we observe index dispatch.
 
     struct NoopStore;
+    struct NoopEntry;
+
+    impl KVEntry for NoopEntry {
+        fn key(&self) -> &[u8] {
+            &[]
+        }
+
+        fn value(&self) -> &[u8] {
+            &[]
+        }
+    }
 
     impl ReadKVStore for NoopStore {
         type Error = BackendError;
-        type Iter = std::iter::Empty<Result<(Vec<u8>, Vec<u8>), BackendError>>;
+        type Value<'a> = Vec<u8>;
+        type Entry = NoopEntry;
+        type Iter = std::iter::Empty<Result<NoopEntry, BackendError>>;
 
-        fn get(&self, _: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>, BackendError> {
+        fn get(&self, _: impl AsRef<[u8]>) -> Result<Option<Self::Value<'_>>, BackendError> {
             Ok(None)
         }
         fn scan(
