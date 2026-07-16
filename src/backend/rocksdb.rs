@@ -85,7 +85,12 @@ impl MultiStore for RocksDbMultiStore {
     ) -> Result<(), Self::Error> {
         let prepared = stores
             .into_iter()
-            .map(|store| ((namespace, store), Arc::<[u8]>::from(store_prefix(namespace, store))))
+            .map(|store| {
+                (
+                    (namespace, store),
+                    Arc::<[u8]>::from(store_prefix(namespace, store)),
+                )
+            })
             .collect::<Vec<_>>();
 
         let mut stores = self.stores.write().unwrap();
@@ -135,8 +140,9 @@ impl MultiStore for RocksDbMultiStore {
         let transaction = self
             .db
             .transaction_opt(&WriteOptions::default(), &transaction_options());
-        let transaction =
-            unsafe { std::mem::transmute::<Transaction<'_, TransactionDB>, RocksTransaction>(transaction) };
+        let transaction = unsafe {
+            std::mem::transmute::<Transaction<'_, TransactionDB>, RocksTransaction>(transaction)
+        };
 
         Ok(RocksDbWriteHandle {
             namespace,
@@ -225,12 +231,9 @@ impl ReadKVStore for RocksDbReadStore {
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
     ) -> Result<Self::Iter, Self::Error> {
-        scan_entries(
-            self.prefix.as_ref(),
-            direction,
-            range,
-            |readopts, mode| self.inner.snapshot.iterator_opt(mode, readopts),
-        )
+        scan_entries(self.prefix.as_ref(), direction, range, |readopts, mode| {
+            self.inner.snapshot.iterator_opt(mode, readopts)
+        })
     }
 }
 
@@ -281,12 +284,9 @@ impl ReadKVStore for RocksDbWriteStore<'_> {
         range: impl RangeBounds<Vec<u8>>,
         direction: Direction,
     ) -> Result<Self::Iter, Self::Error> {
-        scan_entries(
-            self.prefix.as_ref(),
-            direction,
-            range,
-            |readopts, mode| self.transaction.iterator_opt(mode, readopts),
-        )
+        scan_entries(self.prefix.as_ref(), direction, range, |readopts, mode| {
+            self.transaction.iterator_opt(mode, readopts)
+        })
     }
 }
 
