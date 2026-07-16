@@ -1,6 +1,6 @@
-use crate::entity::Entity;
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
+use crate::item::Item;
 use crate::store::MultiStoreWriteHandle;
 use std::marker::PhantomData;
 
@@ -11,7 +11,7 @@ pub struct There<Tail>(PhantomData<Tail>);
 pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
 /// IndexRegistry is a recursive HList trait to allow defining multiple indexes as generic types.
-pub trait IndexRegistry<T: Entity> {
+pub trait IndexRegistry<T: Item> {
     fn store_names(out: &mut Vec<&'static str>);
 
     fn update<'a, DB: MultiStoreWriteHandle>(
@@ -32,7 +32,7 @@ pub trait IndexRegistry<T: Entity> {
 
 impl<T> IndexRegistry<T> for Nil
 where
-    T: Entity,
+    T: Item,
 {
     fn store_names(_out: &mut Vec<&'static str>) {}
 
@@ -60,7 +60,7 @@ where
 
 impl<T, Head, Tail> IndexRegistry<T> for Cons<Head, Tail>
 where
-    T: Entity,
+    T: Item,
     Head: Index<T>,
     Tail: IndexRegistry<T>,
     for<'ik, 'pk> Head::Kind<'ik>: IndexKind<Head::Key<'ik>, T::Key<'pk>>,
@@ -113,12 +113,12 @@ mod tests {
     use crate::store::{MultiStoreWriteHandle, ReadKVStore, ReadWriteKVStore, WriteKVStore};
     use std::ops::RangeBounds;
 
-    // ── Minimal entity ────────────────────────────────────────────────────────
+    // ── Minimal item ────────────────────────────────────────────────────────
 
     #[derive(Clone)]
     struct Record(u32);
 
-    impl Entity for Record {
+    impl Item for Record {
         type Key<'a> = u32;
         type Error = std::io::Error;
 

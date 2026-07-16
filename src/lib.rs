@@ -1,16 +1,16 @@
 //! Typed collections, indexes, and scans over ordered key-value stores.
 //!
 //! Collette sits between raw embedded KV APIs and heavier ORM/database layers:
-//! you define an [`Entity`], describe the secondary [`Index`] values that should
+//! you define an [`Item`], describe the secondary [`Index`] values that should
 //! be maintained for it, and query those indexes with typed range and prefix
 //! scans.
 //!
 //! The crate is built around a few small contracts:
 //!
-//! - [`Entity`] owns record serialization and primary-key extraction.
+//! - [`Item`] owns record serialization and primary-key extraction.
 //! - [`Key`] defines the ordered byte encoding used by primary keys, index keys,
 //!   scan bounds, and cursors.
-//! - [`Index`] describes a secondary lookup over an entity.
+//! - [`Index`] describes a secondary lookup over an item.
 //! - [`collection()`] builds a [`Collection`] over a multistore backend.
 //!
 //! Backend traits such as [`store::MultiStore`] are adapter contracts for
@@ -22,7 +22,7 @@
 //! ```no_run
 //! use collette::backend::memory::InMemoryMultiStore;
 //! use collette::collection::collection;
-//! use collette::entity::Entity;
+//! use collette::item::Item;
 //! use collette::index::{Index, Unique};
 //!
 //! #[derive(Clone)]
@@ -31,7 +31,7 @@
 //!     email: String,
 //! }
 //!
-//! impl Entity for User {
+//! impl Item for User {
 //!     type Key<'a> = u64;
 //!     type Error = std::convert::Infallible;
 //!
@@ -88,16 +88,16 @@
 //!
 //! # Storage compatibility
 //!
-//! Collette stores exactly the bytes produced by your [`Entity`] and [`Key`]
+//! Collette stores exactly the bytes produced by your [`Item`] and [`Key`]
 //! implementations. Changing either encoding changes the physical storage
 //! layout and should be handled as an application migration.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub use collection::{collection, Collection, CollectionBuilder};
-pub use entity::Entity;
 pub use error::{BackendError, CodecError, Error};
 pub use index::{Index, Multi, Unique};
+pub use item::Item;
 pub use key::{Key, KeySize};
 pub use scan::{Direction, IndexScan, PrefixScan};
 
@@ -105,8 +105,6 @@ pub use scan::{Direction, IndexScan, PrefixScan};
 pub mod backend;
 /// Typed collection builder and record operations.
 pub mod collection;
-/// Persistable record contract.
-pub mod entity;
 /// Error types returned by collection, codec, and backend operations.
 pub mod error;
 /// Secondary index traits and index cardinality markers.
@@ -114,6 +112,8 @@ pub mod index;
 #[doc(hidden)]
 pub mod index_registry;
 mod inline_vec;
+/// Persistable record contract.
+pub mod item;
 /// Iterator types returned by index scans.
 pub mod iter;
 /// Ordered key encoding traits and helpers.

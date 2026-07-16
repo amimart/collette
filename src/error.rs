@@ -23,7 +23,7 @@ pub enum Error {
     #[error("backend error: {0}")]
     Backend(#[source] BackendError),
 
-    /// Error reported by an entity codec.
+    /// Error reported by an item codec.
     #[error("serialization error: {0}")]
     Codec(#[source] CodecError),
 
@@ -64,7 +64,7 @@ impl std::error::Error for BackendError {
     }
 }
 
-/// Type-erased error returned by an [`Entity`](crate::Entity) codec.
+/// Type-erased error returned by an [`Item`](crate::Item) codec.
 #[derive(Debug)]
 pub struct CodecError(BoxError);
 

@@ -1,7 +1,7 @@
-use crate::entity::Entity;
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::index_registry::{Cons, ContainsIndex, IndexRegistry, Nil};
+use crate::item::Item;
 use crate::key::Key;
 use crate::scan::IndexScan;
 use crate::store::{
@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 
 /// A typed namespace of records and secondary indexes.
 ///
-/// A collection stores each [`Entity`] in its primary store and maintains all
+/// A collection stores each [`Item`] in its primary store and maintains all
 /// configured indexes in the same backend namespace. Mutating operations update
 /// the record and every index in one backend write transaction.
 ///
@@ -22,8 +22,8 @@ use std::marker::PhantomData;
 pub struct Collection<DB, Record, Indexes>
 where
     DB: MultiStore,
-    // The stored record implementing the Entity contract
-    Record: Entity,
+    // The stored record implementing the Item contract
+    Record: Item,
     Indexes: IndexRegistry<Record>,
 {
     name: &'static str,
@@ -35,7 +35,7 @@ where
 impl<DB, Record, Indexes> Collection<DB, Record, Indexes>
 where
     DB: MultiStore,
-    Record: Entity,
+    Record: Item,
     Indexes: IndexRegistry<Record>,
 {
     const MAIN_STORE: &'static str = "__main";
@@ -225,7 +225,7 @@ where
     ///
     /// ```no_run
     /// # use collette::backend::memory::InMemoryMultiStore;
-    /// # use collette::{collection, Entity, Index, Unique};
+    /// # use collette::{collection, Item, Index, Unique};
     /// #
     /// # #[derive(Clone)]
     /// # struct User {
@@ -233,7 +233,7 @@ where
     /// #     email: String,
     /// # }
     /// #
-    /// # impl Entity for User {
+    /// # impl Item for User {
     /// #     type Key<'a> = u64;
     /// #     type Error = std::convert::Infallible;
     /// #
@@ -301,7 +301,7 @@ where
 pub struct CollectionBuilder<DB, Record, Indexes>
 where
     DB: MultiStore,
-    Record: Entity,
+    Record: Item,
     Indexes: IndexRegistry<Record>,
 {
     name: &'static str,
@@ -313,7 +313,7 @@ where
 impl<DB, Record, Indexes> CollectionBuilder<DB, Record, Indexes>
 where
     DB: MultiStore,
-    Record: Entity,
+    Record: Item,
     Indexes: IndexRegistry<Record>,
 {
     /// Adds a secondary index to the collection type.
@@ -355,7 +355,7 @@ where
 ///
 /// ```no_run
 /// # use collette::backend::memory::InMemoryMultiStore;
-/// # use collette::{Entity, Index, Unique};
+/// # use collette::{Item, Index, Unique};
 /// #
 /// # #[derive(Clone)]
 /// # struct User {
@@ -363,7 +363,7 @@ where
 /// #     email: String,
 /// # }
 /// #
-/// # impl Entity for User {
+/// # impl Item for User {
 /// #     type Key<'a> = u64;
 /// #     type Error = std::convert::Infallible;
 /// #
@@ -403,7 +403,7 @@ where
 /// ```
 pub fn collection<T, DB>(name: &'static str, db: DB) -> CollectionBuilder<DB, T, Nil>
 where
-    T: Entity,
+    T: Item,
     DB: MultiStore,
 {
     CollectionBuilder {
@@ -416,18 +416,18 @@ where
 #[cfg(test)]
 mod tests {
     use crate::collection::Collection;
-    use crate::entity::Entity;
     use crate::error::Error;
+    use crate::item::Item;
     use crate::key::Key;
     use crate::testing::{backend_error, MockDb, SpyRegistry};
 
-    // ── Minimal entity ────────────────────────────────────────────────────────
+    // ── Minimal item ────────────────────────────────────────────────────────
 
     struct TestRecord {
         id: u32,
     }
 
-    impl Entity for TestRecord {
+    impl Item for TestRecord {
         type Key<'a> = u32;
         type Error = std::io::Error;
 
