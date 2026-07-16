@@ -49,6 +49,38 @@ function currentVersion() {
   return version;
 }
 
+function updateCargoTomlVersion(version) {
+  const manifest = readFileSync(cargoTomlPath, "utf8");
+  const updated = manifest.replace(
+    /^version = "[^"]+"$/m,
+    `version = "${version}"`,
+  );
+
+  if (updated === manifest) {
+    throw new Error("Could not update package version in Cargo.toml");
+  }
+
+  writeFileSync(cargoTomlPath, updated);
+}
+
+function updateCargoLockVersion(version) {
+  const cargoLockPath = "Cargo.lock";
+
+  if (!existsSync(cargoLockPath)) {
+    return;
+  }
+
+  const lockfile = readFileSync(cargoLockPath, "utf8");
+  const packagePattern = /(\[\[package\]\]\nname = "collette"\nversion = ")[^"]+(")/;
+  const updated = lockfile.replace(packagePattern, `$1${version}$2`);
+
+  if (updated === lockfile) {
+    throw new Error("Could not update collette package version in Cargo.lock");
+  }
+
+  writeFileSync(cargoLockPath, updated);
+}
+
 function latestTag() {
   return tryRun("git", ["describe", "--tags", "--match", "v[0-9]*", "--abbrev=0"]);
 }
@@ -180,14 +212,14 @@ function updateChangelog(version, notes) {
 
 function plan() {
   const previousTag = latestTag();
-  const version = currentVersion();
+  const current = currentVersion();
   const bump = strongestBump(parseCommits(previousTag));
 
   if (!previousTag) {
     writeOutput({
       previous_tag: "",
-      version,
-      tag: `v${version}`,
+      version: current,
+      tag: `v${current}`,
       bump: bump ?? "initial",
     });
     return;
@@ -199,16 +231,10 @@ function plan() {
 
   const expectedVersion = incrementVersion(tagVersion(previousTag), bump);
 
-  if (version !== expectedVersion) {
-    throw new Error(
-      `Cargo.toml version is ${version}, but Conventional Commits require ${expectedVersion}`,
-    );
-  }
-
   writeOutput({
     previous_tag: previousTag,
-    version,
-    tag: `v${version}`,
+    version: expectedVersion,
+    tag: `v${expectedVersion}`,
     bump,
   });
 }
@@ -226,6 +252,8 @@ function apply(notesFile) {
 
   const notes = cleanReleaseNotes(readFileSync(notesFile, "utf8"));
 
+  updateCargoTomlVersion(version);
+  updateCargoLockVersion(version);
   updateChangelog(version, notes);
   writeFileSync(cleanNotesPath, `${notes}\n`);
 }
