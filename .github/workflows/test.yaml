@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test
+  test-rustdoc:
+    name: Test rustdoc
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,4 +23,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Test
-        run: cargo test --workspace --doc --all-features
+        run: make test-doc
+
+  test-rust:
+    name: Test rust with coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: make test-coverage
