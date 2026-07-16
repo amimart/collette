@@ -38,6 +38,12 @@ test-doc: ## Run Rust doc tests
 	@printf "$(COLOR_GREEN)$(BOLD)🧪 Running doc tests...$(COLOR_RESET)\n"
 	cargo test --doc --workspace --all-features
 
+## Coverage
+.PHONY: test-coverage
+test-coverage: ## Run Rust test coverage
+	@printf "$(COLOR_GREEN)$(BOLD)☂️ Running tests with coverage...$(COLOR_RESET)\n"
+	cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+
 ## Lint:
 .PHONY: lint
 lint: lint-rust lint-rust-format lint-md lint-yaml ## Run all linters
