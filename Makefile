@@ -26,12 +26,23 @@ build-rust: ## Build the Rust sources
 
 ## Test:
 .PHONY: test
-test: test-rust ## Run all tests
+test: test-rust test-doc ## Run all tests
 
 .PHONY: test-rust
 test-rust: ## Run Rust tests
 	@printf "$(COLOR_GREEN)$(BOLD)🧪 Running tests...$(COLOR_RESET)\n"
-	cargo test --doc --all-features
+	cargo test --workspace --all-features
+
+.PHONY: test-doc
+test-doc: ## Run Rust doc tests
+	@printf "$(COLOR_GREEN)$(BOLD)🧪 Running doc tests...$(COLOR_RESET)\n"
+	cargo test --doc --workspace --all-features
+
+## Coverage
+.PHONY: test-coverage
+test-coverage: ## Run Rust test coverage
+	@printf "$(COLOR_GREEN)$(BOLD)☂️ Running tests with coverage...$(COLOR_RESET)\n"
+	cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 
 ## Lint:
 .PHONY: lint
