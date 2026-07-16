@@ -6,3 +6,5 @@ MD013: false
 MD033: false
 # Pull request templates intentionally start at section level
 MD041: false
+# Allow duplicate headers, like the changelog
+MD024: false
