@@ -79,6 +79,18 @@ impl<K: Key + Prefixable<P>, P: Prefix> IntoScanBounds for Bound<PrefixOrKey<K, 
     }
 }
 
+pub (crate) fn prefix_range<K, P, S>(prefix: P, range: Range<Bound<S>>) -> Range<Bound<K>>
+where
+    K: Key + Prefixable<P, Suffix = S>,
+    P: Prefix,
+    S: Key,
+{
+    Range {
+        start: range.start.map(|s| K::compose(prefix.clone(), s)),
+        end: range.end.map(|s| K::compose(prefix, s)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
