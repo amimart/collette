@@ -55,7 +55,7 @@ use std::fmt::Debug;
 /// assert!(1u64.encode().as_ref() < 2u64.encode().as_ref());
 /// assert_eq!(u64::decode(&42u64.encode()), 42);
 /// ```
-pub trait Key: Debug + Eq {
+pub trait Key: Clone + Debug + Eq {
     /// The encoded size of the key.
     ///
     /// Fixed-size keys allow Collette to preallocate buffers efficiently.
