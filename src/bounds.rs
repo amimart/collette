@@ -15,6 +15,16 @@ pub(crate) trait IntoScanBounds {
     }
 }
 
+impl<K: Key> IntoScanBounds for Range<Bound<K>> {
+    fn start_bound(&self) -> Bound<Vec<u8>> {
+        self.start.clone().map(|k| k.encode().as_ref().to_vec())
+    }
+
+    fn end_bound(&self) -> ScanBound {
+        self.end.clone().map(|k| k.encode().as_ref().to_vec())
+    }
+}
+
 impl<P: Prefix> IntoScanBounds for Bound<P> {
     fn start_bound(&self) -> Bound<Vec<u8>> {
         match self {
