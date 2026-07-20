@@ -1,6 +1,6 @@
 use crate::key::Key;
 use crate::prefix::{Prefix, PrefixOrKey, Prefixable};
-use std::ops::Bound;
+use std::ops::{Bound, Range};
 
 pub(crate) type ScanBound = Bound<Vec<u8>>;
 pub(crate) type ScanRange = (ScanBound, ScanBound);
@@ -9,6 +9,10 @@ pub(crate) trait IntoScanBounds {
     fn start_bound(&self) -> ScanBound;
 
     fn end_bound(&self) -> ScanBound;
+
+    fn range(&self) -> ScanRange {
+        (self.start_bound(), self.end_bound())
+    }
 }
 
 impl<P: Prefix> IntoScanBounds for Bound<P> {
