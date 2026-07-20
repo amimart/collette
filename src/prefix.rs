@@ -8,7 +8,7 @@ use crate::key::Key;
 use std::ops::Bound;
 
 /// A typed value that can be used as a scan prefix.
-pub trait Prefix {
+pub trait Prefix: Key {
     /// Encodes this prefix using the same ordered bytes as a full key.
     fn encode_prefix(&self) -> Vec<u8>;
 }
@@ -81,6 +81,9 @@ pub trait Prefixable<P>
 where
     P: Prefix,
 {
+    type Suffix: Key;
+
+    fn compose(prefix: P, key: Self::Suffix) -> Self;
 }
 
 impl<A, B> Prefixable<A> for (A, B)
@@ -88,6 +91,11 @@ where
     A: Key,
     B: Key,
 {
+    type Suffix = B;
+
+    fn compose(prefix: A, key: Self::Suffix) -> Self {
+        (prefix, key)
+    }
 }
 
 impl<A, B, C> Prefixable<A> for (A, B, C)
