@@ -3,7 +3,7 @@
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`IndexScan::iter`] opens the backend stores and returns an iterator.
 
-use crate::bounds::{IntoScanBounds, ScanBound, ScanRange};
+use crate::bounds::{prefix_range, IntoScanBounds, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind, StoreKey};
 use crate::item::Item;
@@ -185,6 +185,40 @@ where
             self.range.start_bound(),
             self.range.end_bound(),
         ).range();
+        Ok(scan)
+    }
+}
+
+pub struct SuffixRangeScan<'a, S, P>
+where
+    S: Scan,
+    P: Prefix,
+    S::Key<'a>: Prefixable<P>,
+{
+    range: Range<Bound<<S::Key<'a> as Prefixable<P>>::Suffix>>,
+    inner: PrefixedScan<'a, S, P>,
+}
+
+impl<'a, S, P> Scan for SuffixRangeScan<'a, S, P>
+where
+    S: Scan,
+    P: Prefix + 'a,
+    S::Key<'a>: Prefixable<P>,
+{
+    type Key<'b> = S::Key<'b>
+    where
+        Self: 'b;
+    type Executor = S::Executor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        let prefix = self.inner.prefix.clone();
+
+        let mut scan = self.inner.compile()?;
+        scan.range = prefix_range::<Self::Key<'a>, P, <Self::Key<'a> as Prefixable<P>>::Suffix>(
+            prefix,
+            self.range.clone(),
+        ).range();
+
         Ok(scan)
     }
 }
