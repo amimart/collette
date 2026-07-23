@@ -83,7 +83,7 @@ where
 {
     type Suffix: Key;
 
-    fn compose(prefix: P, key: Self::Suffix) -> Self;
+    fn compose(prefix: P, suffix: Self::Suffix) -> Self;
 }
 
 impl<A, B> Prefixable<A> for (A, B)
@@ -93,8 +93,8 @@ where
 {
     type Suffix = B;
 
-    fn compose(prefix: A, key: Self::Suffix) -> Self {
-        (prefix, key)
+    fn compose(prefix: A, suffix: Self::Suffix) -> Self {
+        (prefix, suffix)
     }
 }
 
@@ -104,6 +104,11 @@ where
     B: Key,
     C: Key,
 {
+    type Suffix = (B, C);
+
+    fn compose(prefix: A, suffix: Self::Suffix) -> Self {
+        (prefix, suffix.0, suffix.1)
+    }
 }
 
 impl<A, B, C> Prefixable<(A, B)> for (A, B, C)
@@ -112,6 +117,11 @@ where
     B: Key,
     C: Key,
 {
+    type Suffix = C;
+
+    fn compose(prefix: (A, B), suffix: Self::Suffix) -> Self {
+        (prefix.0, prefix.1, suffix)
+    }
 }
 
 impl<A, B, C, D> Prefixable<A> for (A, B, C, D)
@@ -121,6 +131,11 @@ where
     C: Key,
     D: Key,
 {
+    type Suffix = (B, C, D);
+
+    fn compose(prefix: A, suffix: Self::Suffix) -> Self {
+        (prefix, suffix.0, suffix.1, suffix.2)
+    }
 }
 
 impl<A, B, C, D> Prefixable<(A, B)> for (A, B, C, D)
@@ -130,6 +145,11 @@ where
     C: Key,
     D: Key,
 {
+    type Suffix = (C, D);
+
+    fn compose(prefix: (A, B), suffix: Self::Suffix) -> Self {
+        (prefix.0, prefix.1, suffix.0, suffix.1)
+    }
 }
 
 impl<A, B, C, D> Prefixable<(A, B, C)> for (A, B, C, D)
@@ -139,6 +159,11 @@ where
     C: Key,
     D: Key,
 {
+    type Suffix = D;
+
+    fn compose(prefix: (A, B, C), suffix: Self::Suffix) -> Self {
+        (prefix.0, prefix.1, prefix.2, suffix)
+    }
 }
 
 #[cfg(test)]
