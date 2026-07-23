@@ -52,4 +52,67 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bound_pair_converts_keys_to_scan_bounds() {
+        let bounds = (
+            Bound::Included((1u32, 10u16)),
+            Bound::Excluded((2u32, 20u16)),
+        );
+
+        assert_eq!(
+            bounds.range(),
+            (
+                Bound::Included(encode((1u32, 10u16))),
+                Bound::Excluded(encode((2u32, 20u16))),
+            )
+        );
+    }
+
+    #[test]
+    fn bound_range_converts_keys_to_scan_bounds() {
+        let range = Bound::Excluded(1u32)..Bound::Included(3u32);
+
+        assert_eq!(
+            range.range(),
+            (
+                Bound::Excluded(encode(1u32)),
+                Bound::Included(encode(3u32)),
+            )
+        );
+    }
+
+    #[test]
+    fn prefixed_range_composes_single_prefix_and_suffix_bounds() {
+        let range: (Bound<(u32, u16)>, Bound<(u32, u16)>) =
+            prefixed_range(7u32, (Bound::Excluded(10u16), Bound::Included(20u16)));
+
+        assert_eq!(
+            range,
+            (Bound::Excluded((7u32, 10u16)), Bound::Included((7u32, 20u16)))
+        );
+    }
+
+    #[test]
+    fn prefixed_range_preserves_unbounded_suffix_bounds() {
+        let range: (Bound<(u32, u16)>, Bound<(u32, u16)>) =
+            prefixed_range::<(u32, u16), u32, u16>(7u32, ..);
+
+        assert_eq!(range, (Bound::Unbounded, Bound::Unbounded));
+    }
+
+    #[test]
+    fn prefixed_range_composes_tuple_prefix_and_suffix_bounds() {
+        let range: (Bound<(u32, u16, u8)>, Bound<(u32, u16, u8)>) =
+            prefixed_range((7u32, 8u16), 9u8..10u8);
+
+        assert_eq!(
+            range,
+            (Bound::Included((7u32, 8u16, 9u8)), Bound::Excluded((7u32, 8u16, 10u8)))
+        );
+    }
+
+    fn encode(key: impl Key) -> Vec<u8> {
+        key.encode().as_ref().to_vec()
+    }
 }
