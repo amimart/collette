@@ -45,6 +45,42 @@ impl<E: ScanExecutor> CompiledScan<E> {
         self.executor.open(self.range.0, self.range.1, self.direction)
     }
 }
+
+pub struct IndexExecutor<ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    collection_name: &'static str,
+    read_handle: ReadHandle,
+
+    _marker: PhantomData<(Record, Idx)>,
+}
+
+impl<ReadHandle, Record, Idx> ScanExecutor for IndexExecutor<ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    type Iter = IndexIterator<ReadHandle::Store, Record>;
+
+    fn open(self, start: ScanBound, end: ScanBound, direction: Direction) -> Result<Self::Iter, Error> {
+        Ok(IndexIterator::new(
+            self.read_handle
+                .open_store(Idx::NAME)
+                .map_err(Error::backend)?
+                .scan((start, end), direction)
+                .map_err(Error::backend)?,
+            self.read_handle
+                .open_store(self.collection_name)
+                .map_err(Error::backend)?,
+        ))
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
