@@ -446,6 +446,7 @@ where
     ///     .range(created_from..created_to)
     ///     .iter()?;
     /// ```
+    #[allow(clippy::type_complexity)]
     pub fn range<R>(self, range: R) -> RangeScan<'a, Self, (Bound<S::Key<'a>>, Bound<S::Key<'a>>)>
     where
         R: RangeBounds<<S::Key<'a> as Prefixable<P>>::Suffix>,
