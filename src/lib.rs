@@ -100,8 +100,8 @@ pub use index::{Index, Multi, Unique};
 pub use item::Item;
 pub use key::{Key, KeySize};
 pub use scan::{
-    AfterScan, CompiledScan, DirectedScan, Direction, IndexFullScan, PrefixedScan, RangeScan, Scan,
-    ScanExecutor, PrefixableScan
+    AfterScan, CompiledScan, DirectedScan, Direction, IndexFullScan, PrefixableScan, PrefixedScan,
+    RangeScan, Scan, ScanExecutor,
 };
 
 /// Backend implementations for Collette's storage traits.
