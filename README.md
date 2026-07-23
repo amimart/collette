@@ -206,8 +206,8 @@ let recently_active_users = users.scan(ByStatusAndCreatedAt)?
     .direction(Direction::LeftToRight)
     .iter()?;
 
-let last_seen_user_id = 42;
-let cursor = (Status::Active, 1_700_010_000, &last_seen_user_id)
+let last_seen_user_id = 42u64;
+let cursor = (Status::Active, 1_700_010_000u64, &last_seen_user_id)
     .encode()
     .as_ref()
     .to_vec();
