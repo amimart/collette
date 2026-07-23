@@ -147,18 +147,6 @@ where
         }
     }
 
-    pub fn prefix<P>(self, prefix: P) -> PrefixedScan<'a, Self, P>
-    where
-        P: Prefix,
-        <Self as Scan>::Key<'a>: Prefixable<P>,
-    {
-        PrefixedScan {
-            prefix,
-            inner: self,
-            _marker: Default::default(),
-        }
-    }
-
     pub fn range<R>(self, range: R) -> RangeScan<'a, Self, R>
     where
         R: RangeBounds<<Self as Scan>::Key<'a>>,
@@ -181,6 +169,33 @@ where
     pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+}
+
+pub trait PrefixableScan<'a, K: Key + Prefixable<P>, P: Prefix>: Scan
+where
+    Self: 'a,
+    <Self as Scan>::Key<'a>: Key + Prefixable<P>,
+{
+    fn prefix(self, prefix: P) -> PrefixedScan<'a, Self, P>;
+}
+
+impl<'a, ReadHandle, Record, Idx, P> PrefixableScan<'a, <Self as Scan>::Key<'a>, P> for IndexFullScan<'a, ReadHandle, Record, Idx>
+where
+    Self: Scan,
+    <Self as Scan>::Key<'a>: Key + Prefixable<P>,
+    P: Prefix,
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    fn prefix(self, prefix: P) -> PrefixedScan<'a, Self, P> {
+        PrefixedScan {
+            prefix,
             inner: self,
             _marker: Default::default(),
         }
