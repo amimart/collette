@@ -27,11 +27,14 @@ Add Collette to your `Cargo.toml`:
 collette = "0.1"
 ```
 
-The in-memory backend is enabled by default. Enable `redb` for persistent embedded storage:
+The in-memory backend is enabled by default. Enable `redb` or `rocksdb` for
+persistent embedded storage:
 
 ```toml
 [dependencies]
 collette = { version = "0.1", features = ["redb"] }
+# or
+collette = { version = "0.1", features = ["rocksdb"] }
 ```
 
 ## Quick Start
@@ -115,8 +118,11 @@ impl Item for User {
 | --- | --- | --- |
 | In-memory | `memory` enabled by default | Tests, examples, and ephemeral in-process state. |
 | redb | `redb` | Persistent embedded storage backed by [`redb`](https://crates.io/crates/redb). |
+| RocksDB | `rocksdb` | Persistent embedded storage backed by [`rocksdb`](https://crates.io/crates/rocksdb). |
 
 Application code should not call backend traits directly. Pick a backend, build a collection, and work through `Collection`.
+The RocksDB backend builds the native RocksDB library through `rust-rocksdb`, so
+Clang and LLVM must be available when compiling that feature.
 
 ## Indexes
 

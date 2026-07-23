@@ -8,5 +8,9 @@ pub mod memory;
 #[cfg(feature = "redb")]
 pub mod redb;
 
+#[cfg_attr(docsrs, doc(cfg(feature = "rocksdb")))]
+#[cfg(feature = "rocksdb")]
+pub mod rocksdb;
+
 #[cfg(test)]
 mod tests;
