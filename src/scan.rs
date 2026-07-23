@@ -276,12 +276,12 @@ where
     ///     .range((Status::Active, from)..(Status::Active, to))
     ///     .iter()?;
     /// ```
-    pub fn range<R>(self, range: R) -> RangeScan<'a, Self, R>
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self>
     where
         R: RangeBounds<<Self as Scan>::Key<'a>>,
     {
         RangeScan {
-            range,
+            range: (range.start_bound(), range.end_bound()).range(),
             inner: self,
             _marker: Default::default(),
         }
@@ -446,13 +446,15 @@ where
     ///     .range(created_from..created_to)
     ///     .iter()?;
     /// ```
-    #[allow(clippy::type_complexity)]
-    pub fn range<R>(self, range: R) -> RangeScan<'a, Self, (Bound<S::Key<'a>>, Bound<S::Key<'a>>)>
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self>
     where
         R: RangeBounds<<S::Key<'a> as Prefixable<P>>::Suffix>,
     {
         RangeScan {
-            range: prefixed_range(self.prefix.clone(), range),
+            range: prefixed_range::<S::Key<'a>, P, <S::Key<'a> as Prefixable<P>>::Suffix>(
+                self.prefix.clone(),
+                range,
+            ),
             inner: self,
             _marker: Default::default(),
         }
@@ -509,21 +511,19 @@ where
 /// Scan builder restricted to a typed key range.
 ///
 /// Returned by [`IndexFullScan::range`] or [`PrefixedScan::range`].
-pub struct RangeScan<'a, S, R>
+pub struct RangeScan<'a, S>
 where
     S: Scan + 'a,
-    R: RangeBounds<S::Key<'a>>,
 {
-    range: R,
+    range: ScanRange,
     inner: S,
 
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, S, R> Scan for RangeScan<'a, S, R>
+impl<'a, S> Scan for RangeScan<'a, S>
 where
     S: Scan,
-    R: RangeBounds<S::Key<'a>>,
 {
     type Key<'b>
         = S::Key<'b>
@@ -533,15 +533,14 @@ where
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
-        scan.range = (self.range.start_bound(), self.range.end_bound()).range();
+        scan.range = self.range;
         Ok(scan)
     }
 }
 
-impl<'a, S, R> RangeScan<'a, S, R>
+impl<'a, S> RangeScan<'a, S>
 where
     S: Scan,
-    R: RangeBounds<S::Key<'a>>,
 {
     /// Sets the scan direction while keeping the range applied.
     ///
@@ -860,8 +859,8 @@ mod tests {
         assert_scan(
             |scan| scan.prefix(2u32).range(..),
             Ok(scan_log(
-                Bound::Unbounded,
-                Bound::Unbounded,
+                encoded_prefix_range(encode_prefix(2)).0,
+                encoded_prefix_range(encode_prefix(2)).1,
                 Direction::LeftToRight,
             )),
         );

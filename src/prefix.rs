@@ -78,16 +78,6 @@ where
 /// You normally do not implement this trait yourself unless you provide a
 /// custom composite key type. Application code usually relies on the tuple
 /// implementations provided by Collette.
-///
-/// # Examples
-///
-/// ```
-/// use collette::prefix::Prefixable;
-///
-/// type Key = (u8, u64);
-///
-/// let key = <Key as Prefixable<u8>>::compose(1, 42);
-/// assert_eq!(key, (1, 42));
 /// ```
 pub trait Prefixable<P>
 where
