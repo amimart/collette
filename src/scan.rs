@@ -394,4 +394,198 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::{Index, Multi};
+    use crate::item::Item;
+    use crate::key::Key;
+    use crate::prefix::encoded_prefix_range;
+    use crate::store::MultiStore;
+    use crate::testing::{MockDb, MockReadHandle, ScanLog};
+
+    #[derive(Debug)]
+    struct Record {
+        id: u32,
+        group: u32,
+        number: u32,
+    }
+
+    impl Item for Record {
+        type Key<'a> = u32;
+        type Error = std::io::Error;
+
+        fn key(&self) -> Self::Key<'_> {
+            self.id
+        }
+
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+            Ok(vec![])
+        }
+
+        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
+            Ok(Self {
+                id: 0,
+                group: 0,
+                number: 0,
+            })
+        }
+    }
+
+    struct ByNumber;
+
+    impl Index<Record> for ByNumber {
+        type Key<'a> = (u32, u32);
+        type Kind<'a> = Multi;
+
+        const NAME: &'static str = "number";
+
+        fn key(item: &Record) -> Self::Key<'_> {
+            (item.group, item.number)
+        }
+    }
+
+    #[test]
+    fn full_scan_opens_unbounded_left_to_right() {
+        assert_scan(
+            |scan| scan,
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn range_scan_encodes_logical_index_key_bounds() {
+        assert_scan(
+            |scan| scan.range((1u32, 10u32)..(3u32, 30u32)),
+            Ok(scan_log(
+                Bound::Included(encode_index_key(1, 10)),
+                Bound::Excluded(encode_index_key(3, 30)),
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn prefix_scan_encodes_prefix_bounds() {
+        assert_scan(
+            |scan| scan.prefix(2u32),
+            Ok(scan_log(
+                encoded_prefix_range(encode_prefix(2)).0,
+                encoded_prefix_range(encode_prefix(2)).1,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn prefixed_range_composes_prefix_and_finite_suffix_bounds() {
+        assert_scan(
+            |scan| scan.prefix(2u32).range(20u32..30u32),
+            Ok(scan_log(
+                Bound::Included(encode_index_key(2, 20)),
+                Bound::Excluded(encode_index_key(2, 30)),
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn direction_overrides_iteration_direction() {
+        assert_scan(
+            |scan| scan.prefix(2u32).direction(Direction::RightToLeft),
+            Ok(scan_log(
+                encoded_prefix_range(encode_prefix(2)).0,
+                encoded_prefix_range(encode_prefix(2)).1,
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn left_to_right_cursor_tightens_left_bound() {
+        assert_scan(
+            |scan| {
+                scan.range((1u32, 10u32)..(3u32, 30u32))
+                    .after(encode_store_key(2, 20, 200))
+            },
+            Ok(scan_log(
+                Bound::Excluded(encode_store_key(2, 20, 200)),
+                Bound::Excluded(encode_index_key(3, 30)),
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn right_to_left_cursor_tightens_right_bound() {
+        assert_scan(
+            |scan| {
+                scan.range((1u32, 10u32)..(3u32, 30u32))
+                    .direction(Direction::RightToLeft)
+                    .after(encode_store_key(2, 20, 200))
+            },
+            Ok(scan_log(
+                Bound::Included(encode_index_key(1, 10)),
+                Bound::Excluded(encode_store_key(2, 20, 200)),
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn cursor_outside_bounds_fails_before_opening_stores() {
+        assert_scan(
+            |scan| scan.prefix(2u32).after(encode_store_key(3, 20, 200)),
+            Err(ErrorKind::CursorOutOfBounds),
+        );
+    }
+
+    fn assert_scan<S>(
+        build: impl FnOnce(IndexFullScan<'static, MockReadHandle, Record, ByNumber>) -> S,
+        expected: Result<ScanLog, ErrorKind>,
+    ) where
+        S: Scan<Executor = IndexExecutor<MockReadHandle, Record, ByNumber>>,
+    {
+        let db = MockDb::new();
+        let log = db.log();
+        let read = db.read("records").unwrap();
+        let scan = build(IndexFullScan::<_, Record, ByNumber>::new(read, "records"));
+
+        match expected {
+            Ok(expected) => {
+                scan.iter().unwrap();
+                assert_eq!(log.borrow().scans, vec![expected]);
+            }
+            Err(ErrorKind::CursorOutOfBounds) => {
+                assert!(matches!(scan.iter(), Err(Error::CursorOutOfBounds)));
+                assert!(log.borrow().scans.is_empty());
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum ErrorKind {
+        CursorOutOfBounds,
+    }
+
+    fn scan_log(left: Bound<Vec<u8>>, right: Bound<Vec<u8>>, direction: Direction) -> ScanLog {
+        ScanLog {
+            left,
+            right,
+            direction,
+        }
+    }
+
+    fn encode_prefix(group: u32) -> Vec<u8> {
+        group.encode().as_ref().to_vec()
+    }
+
+    fn encode_index_key(group: u32, number: u32) -> Vec<u8> {
+        (group, number).encode().as_ref().to_vec()
+    }
+
+    fn encode_store_key(group: u32, number: u32, pk: u32) -> Vec<u8> {
+        (group, number, pk).encode().as_ref().to_vec()
+    }
 }
