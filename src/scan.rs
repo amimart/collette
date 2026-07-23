@@ -81,6 +81,19 @@ where
         ))
     }
 }
+
+pub trait Scan: Sized {
+    type Key<'a>: Key
+    where
+        Self: 'a;
+    type Executor: ScanExecutor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error>;
+
+    fn iter(self) -> Result<<Self::Executor as ScanExecutor>::Iter, Error> {
+        self.compile()?.iter()
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
