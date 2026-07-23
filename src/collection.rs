@@ -3,7 +3,7 @@ use crate::index::{Index, IndexKind};
 use crate::index_registry::{Cons, ContainsIndex, IndexRegistry, Nil};
 use crate::item::Item;
 use crate::key::Key;
-use crate::scan::IndexScan;
+use crate::scan::IndexFullScan;
 use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
 };
@@ -218,14 +218,14 @@ where
     ///
     /// The index type must have been registered with
     /// [`CollectionBuilder::with_index`]. The returned scan is lazy and does not
-    /// access the backend until [`IndexScan::iter`](crate::scan::IndexScan::iter)
+    /// access the backend until [`Scan::iter`](crate::scan::Scan::iter)
     /// is called.
     ///
     /// # Examples
     ///
     /// ```no_run
     /// # use collette::backend::memory::InMemoryMultiStore;
-    /// # use collette::{collection, Item, Index, Unique};
+    /// # use collette::{collection, Item, Index, Scan, Unique};
     /// #
     /// # #[derive(Clone)]
     /// # struct User {
@@ -279,15 +279,16 @@ where
     pub fn scan<'a, Idx, P>(
         &self,
         _idx: Idx,
-    ) -> Result<IndexScan<'a, DB::ReadHandle, Record, Idx>, Error>
+    ) -> Result<IndexFullScan<'a, DB::ReadHandle, Record, Idx>, Error>
     where
+        Record: 'a,
         Idx: Index<Record>,
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexScan::new(
-            Self::MAIN_STORE,
+        Ok(IndexFullScan::new(
             self.db.read(self.name).map_err(Error::backend)?,
+            Self::MAIN_STORE,
         ))
     }
 }
