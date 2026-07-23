@@ -99,7 +99,10 @@ pub use error::{BackendError, CodecError, Error};
 pub use index::{Index, Multi, Unique};
 pub use item::Item;
 pub use key::{Key, KeySize};
-pub use scan::{Direction, IndexScan, PrefixScan};
+pub use scan::{
+    AfterScan, BoundedScan, CompiledScan, DirectedScan, Direction, IndexFullScan, PrefixedScan,
+    RangeScan, Scan, ScanExecutor,
+};
 
 /// Backend implementations for Collette's storage traits.
 pub mod backend;
