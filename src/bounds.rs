@@ -91,7 +91,7 @@ impl<K: Key + Prefixable<P>, P: Prefix> IntoScanBounds for Bound<PrefixOrKey<K, 
     }
 }
 
-pub (crate) fn prefix_range<K, P, S>(prefix: P, range: impl RangeBounds<S>) -> (Bound<K>, Bound<K>)
+pub (crate) fn prefixed_range<K, P, S>(prefix: P, range: impl RangeBounds<S>) -> (Bound<K>, Bound<K>)
 where
     K: Key + Prefixable<P, Suffix = S>,
     P: Prefix,
