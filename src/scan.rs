@@ -14,8 +14,8 @@ use crate::store::{MultiStoreReadHandle, ReadKVStore};
 use std::marker::PhantomData;
 use std::ops::{Bound, Range, RangeBounds};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Iteration direction for range scans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     /// Scan from the smallest encoded key to the largest.
     LeftToRight,
@@ -23,6 +23,28 @@ pub enum Direction {
     RightToLeft,
 }
 
+pub trait ScanExecutor: Sized {
+    type Iter;
+
+    fn open(
+        self,
+        start: ScanBound,
+        end: ScanBound,
+        direction: Direction,
+    ) -> Result<Self::Iter, Error>;
+}
+
+pub struct CompiledScan<E: ScanExecutor> {
+    executor: E,
+    range: ScanRange,
+    direction: Direction,
+}
+
+impl<E: ScanExecutor> CompiledScan<E> {
+    pub fn iter(self) -> Result<E::Iter, Error> {
+        self.executor.open(self.range.0, self.range.1, self.direction)
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
