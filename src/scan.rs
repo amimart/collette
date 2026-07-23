@@ -128,6 +128,65 @@ where
     }
 }
 
+impl<'a, ReadHandle, Record, Idx> IndexFullScan<'a, ReadHandle, Record, Idx>
+where
+    Self: Scan,
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
+        Self {
+            executor: IndexExecutor {
+                collection_name,
+                read_handle,
+                _marker: Default::default(),
+            },
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn prefix<P>(self, prefix: P) -> PrefixedScan<'a, Self, P>
+    where
+        P: Prefix,
+        <Self as Scan>::Key<'a>: Prefixable<P>,
+    {
+        PrefixedScan {
+            prefix,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self, R>
+    where
+        R: RangeBounds<<Self as Scan>::Key<'a>>,
+    {
+        RangeScan {
+            range,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
+        DirectedScan {
+            direction,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+        AfterScan {
+            cursor,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+}
+
 pub struct PrefixedScan<'a, S, P>
 where
     S: Scan + 'a,
