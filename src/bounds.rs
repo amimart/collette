@@ -1,6 +1,6 @@
 use crate::key::Key;
 use crate::prefix::{Prefix, PrefixOrKey, Prefixable};
-use std::ops::{Bound, Range};
+use std::ops::{Bound, Range, RangeBounds};
 
 pub(crate) type ScanBound = Bound<Vec<u8>>;
 pub(crate) type ScanRange = (ScanBound, ScanBound);
@@ -91,16 +91,16 @@ impl<K: Key + Prefixable<P>, P: Prefix> IntoScanBounds for Bound<PrefixOrKey<K, 
     }
 }
 
-pub (crate) fn prefix_range<K, P, S>(prefix: P, range: Range<Bound<S>>) -> Range<Bound<K>>
+pub (crate) fn prefix_range<K, P, S>(prefix: P, range: impl RangeBounds<S>) -> (Bound<K>, Bound<K>)
 where
     K: Key + Prefixable<P, Suffix = S>,
     P: Prefix,
-    S: Key,
+    S: Key
 {
-    Range {
-        start: range.start.map(|s| K::compose(prefix.clone(), s)),
-        end: range.end.map(|s| K::compose(prefix, s)),
-    }
+    (
+        range.start_bound().cloned().map(|s| K::compose(prefix.clone(), s)),
+        range.end_bound().cloned().map(|s| K::compose(prefix, s)),
+    )
 }
 
 #[cfg(test)]

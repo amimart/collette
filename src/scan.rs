@@ -217,6 +217,40 @@ where
     }
 }
 
+impl<'a, S, P> PrefixedScan<'a, S, P>
+where
+    S: Scan,
+    P: Prefix,
+    S::Key<'a>: Prefixable<P>,
+{
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self, (Bound<S::Key<'a>>, Bound<S::Key<'a>>)>
+    where
+        R: RangeBounds<<S::Key<'a> as Prefixable<P>>::Suffix>,
+    {
+        RangeScan {
+            range: prefix_range(self.prefix.clone(), range),
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
+        DirectedScan {
+            direction,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+        AfterScan {
+            cursor,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+}
+
 pub struct RangeScan<'a, S, R>
 where
     S: Scan + 'a,
@@ -244,40 +278,6 @@ where
             self.range.start_bound(),
             self.range.end_bound(),
         ).range();
-        Ok(scan)
-    }
-}
-
-pub struct SuffixRangeScan<'a, S, P>
-where
-    S: Scan,
-    P: Prefix,
-    S::Key<'a>: Prefixable<P>,
-{
-    range: Range<Bound<<S::Key<'a> as Prefixable<P>>::Suffix>>,
-    inner: PrefixedScan<'a, S, P>,
-}
-
-impl<'a, S, P> Scan for SuffixRangeScan<'a, S, P>
-where
-    S: Scan,
-    P: Prefix + 'a,
-    S::Key<'a>: Prefixable<P>,
-{
-    type Key<'b> = S::Key<'b>
-    where
-        Self: 'b;
-    type Executor = S::Executor;
-
-    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
-        let prefix = self.inner.prefix.clone();
-
-        let mut scan = self.inner.compile()?;
-        scan.range = prefix_range::<Self::Key<'a>, P, <Self::Key<'a> as Prefixable<P>>::Suffix>(
-            prefix,
-            self.range.clone(),
-        ).range();
-
         Ok(scan)
     }
 }
