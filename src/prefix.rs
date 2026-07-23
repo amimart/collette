@@ -268,4 +268,43 @@ mod tests {
             assert_eq!(encoded_prefix_range(prefix), expected);
         }
     }
+
+    #[test]
+    fn key_values_encode_as_prefixes() {
+        assert_eq!(42u32.encode_prefix(), 42u32.encode().as_ref());
+        assert_eq!((1u8, 2u16).encode_prefix(), (1u8, 2u16).encode().as_ref());
+    }
+
+    #[test]
+    fn two_part_keys_compose_from_one_part_prefix() {
+        type Key = (u8, u16);
+
+        assert_eq!(<Key as Prefixable<u8>>::compose(1, 2), (1, 2));
+    }
+
+    #[test]
+    fn three_part_keys_compose_from_supported_prefixes() {
+        type Key = (u8, u16, u32);
+
+        assert_eq!(<Key as Prefixable<u8>>::compose(1, (2, 3)), (1, 2, 3));
+        assert_eq!(
+            <Key as Prefixable<(u8, u16)>>::compose((1, 2), 3),
+            (1, 2, 3)
+        );
+    }
+
+    #[test]
+    fn four_part_keys_compose_from_supported_prefixes() {
+        type Key = (u8, u16, u32, u64);
+
+        assert_eq!(<Key as Prefixable<u8>>::compose(1, (2, 3, 4)), (1, 2, 3, 4));
+        assert_eq!(
+            <Key as Prefixable<(u8, u16)>>::compose((1, 2), (3, 4)),
+            (1, 2, 3, 4)
+        );
+        assert_eq!(
+            <Key as Prefixable<(u8, u16, u32)>>::compose((1, 2, 3), 4),
+            (1, 2, 3, 4)
+        );
+    }
 }

@@ -751,6 +751,48 @@ mod tests {
     }
 
     #[test]
+    fn compiled_scan_iter_delegates_to_executor() {
+        let scan = CompiledScan {
+            executor: TestExecutor,
+            range: (Bound::Included(vec![0x01]), Bound::Excluded(vec![0x02])),
+            direction: Direction::RightToLeft,
+        };
+
+        assert_eq!(
+            scan.iter().unwrap(),
+            scan_log(
+                Bound::Included(vec![0x01]),
+                Bound::Excluded(vec![0x02]),
+                Direction::RightToLeft,
+            )
+        );
+    }
+
+    #[test]
+    fn full_scan_direction_overrides_iteration_direction() {
+        assert_scan(
+            |scan| scan.direction(Direction::RightToLeft),
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn full_scan_after_tightens_left_bound() {
+        assert_scan(
+            |scan| scan.after(encode_store_key(2, 20, 200)),
+            Ok(scan_log(
+                Bound::Excluded(encode_store_key(2, 20, 200)),
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
     fn range_scan_encodes_logical_index_key_bounds() {
         assert_scan(
             |scan| scan.range((1u32, 10u32)..(3u32, 30u32)),
@@ -763,11 +805,38 @@ mod tests {
     }
 
     #[test]
+    fn range_scan_direction_overrides_iteration_direction() {
+        assert_scan(
+            |scan| {
+                scan.range((1u32, 10u32)..(3u32, 30u32))
+                    .direction(Direction::RightToLeft)
+            },
+            Ok(scan_log(
+                Bound::Included(encode_index_key(1, 10)),
+                Bound::Excluded(encode_index_key(3, 30)),
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
     fn prefix_scan_encodes_prefix_bounds() {
         assert_scan(
             |scan| scan.prefix(2u32),
             Ok(scan_log(
                 encoded_prefix_range(encode_prefix(2)).0,
+                encoded_prefix_range(encode_prefix(2)).1,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn prefixed_scan_after_tightens_left_bound() {
+        assert_scan(
+            |scan| scan.prefix(2u32).after(encode_store_key(2, 20, 200)),
+            Ok(scan_log(
+                Bound::Excluded(encode_store_key(2, 20, 200)),
                 encoded_prefix_range(encode_prefix(2)).1,
                 Direction::LeftToRight,
             )),
@@ -787,6 +856,18 @@ mod tests {
     }
 
     #[test]
+    fn prefixed_range_accepts_unbounded_suffix_range() {
+        assert_scan(
+            |scan| scan.prefix(2u32).range(..),
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
     fn direction_overrides_iteration_direction() {
         assert_scan(
             |scan| scan.prefix(2u32).direction(Direction::RightToLeft),
@@ -794,6 +875,22 @@ mod tests {
                 encoded_prefix_range(encode_prefix(2)).0,
                 encoded_prefix_range(encode_prefix(2)).1,
                 Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn directed_scan_after_tightens_left_bound() {
+        assert_scan(
+            |scan| {
+                scan.range((1u32, 10u32)..(3u32, 30u32))
+                    .direction(Direction::LeftToRight)
+                    .after(encode_store_key(2, 20, 200))
+            },
+            Ok(scan_log(
+                Bound::Excluded(encode_store_key(2, 20, 200)),
+                Bound::Excluded(encode_index_key(3, 30)),
+                Direction::LeftToRight,
             )),
         );
     }
@@ -810,6 +907,32 @@ mod tests {
                 Bound::Excluded(encode_index_key(3, 30)),
                 Direction::LeftToRight,
             )),
+        );
+    }
+
+    #[test]
+    fn cursor_on_excluded_left_bound_fails_before_opening_stores() {
+        assert_scan(
+            |scan| {
+                scan.range((
+                    Bound::Excluded((1u32, 10u32)),
+                    Bound::Included((3u32, 30u32)),
+                ))
+                .after(encode_index_key(1, 10))
+            },
+            Err(ErrorKind::CursorOutOfBounds),
+        );
+    }
+
+    #[test]
+    fn cursor_on_excluded_right_bound_fails_before_opening_stores() {
+        assert_scan(
+            |scan| {
+                scan.range((1u32, 10u32)..(3u32, 30u32))
+                    .direction(Direction::RightToLeft)
+                    .after(encode_index_key(3, 30))
+            },
+            Err(ErrorKind::CursorOutOfBounds),
         );
     }
 
@@ -883,5 +1006,20 @@ mod tests {
 
     fn encode_store_key(group: u32, number: u32, pk: u32) -> Vec<u8> {
         (group, number, pk).encode().as_ref().to_vec()
+    }
+
+    struct TestExecutor;
+
+    impl ScanExecutor for TestExecutor {
+        type Iter = ScanLog;
+
+        fn open(
+            self,
+            start: ScanBound,
+            end: ScanBound,
+            direction: Direction,
+        ) -> Result<Self::Iter, Error> {
+            Ok(scan_log(start, end, direction))
+        }
     }
 }
