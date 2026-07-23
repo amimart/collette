@@ -257,6 +257,31 @@ where
         Ok(scan)
     }
 }
+
+pub struct DirectedScan<'a, S> {
+    direction: Direction,
+    inner: S,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, S> Scan for DirectedScan<'a, S>
+where
+    S: Scan,
+{
+    type Key<'b> = S::Key<'b>
+    where
+        Self: 'b;
+    type Executor = S::Executor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        let mut scan = self.inner.compile()?;
+        scan.direction = self.direction;
+
+        Ok(scan)
+    }
+}
+
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
