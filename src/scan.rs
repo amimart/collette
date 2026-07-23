@@ -94,6 +94,39 @@ pub trait Scan: Sized {
         self.compile()?.iter()
     }
 }
+
+pub struct IndexFullScan<'a, ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    executor: IndexExecutor<ReadHandle, Record, Idx>,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, ReadHandle, Record, Idx> Scan for IndexFullScan<'a, ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    type Key<'b> = Idx::Key<'b>
+    where
+        Self: 'b;
+    type Executor = IndexExecutor<ReadHandle, Record, Idx>;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        Ok(CompiledScan {
+            executor: self.executor,
+            range: (Bound::Unbounded, Bound::Unbounded),
+            direction: Direction::LeftToRight,
+        })
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
