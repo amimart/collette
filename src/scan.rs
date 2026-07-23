@@ -222,6 +222,41 @@ where
         Ok(scan)
     }
 }
+
+pub struct AfterScan<'a, S>
+where
+    S: Scan + 'a,
+{
+    cursor: Vec<u8>,
+    inner: S,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, S> Scan for AfterScan<'a, S>
+where
+    S: Scan,
+{
+    type Key<'b> = S::Key<'b>
+    where
+        Self: 'b;
+    type Executor = S::Executor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        let mut scan = self.inner.compile()?;
+
+        if !(scan.range.0.as_ref(), scan.range.1.as_ref()).contains(&self.cursor) {
+            return Err(Error::CursorOutOfBounds);
+        }
+
+        match scan.direction {
+            Direction::LeftToRight => scan.range.0 = Bound::Excluded(self.cursor),
+            Direction::RightToLeft => scan.range.1 = Bound::Excluded(self.cursor),
+        }
+
+        Ok(scan)
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
