@@ -15,8 +15,7 @@ pub(crate) trait IntoScanRange {
     }
 }
 
-impl<K: Key> IntoScanRange for (Bound<K>, Bound<K>)
-{
+impl<K: Key> IntoScanRange for (Bound<K>, Bound<K>) {
     fn start_scan_bound(&self) -> ScanBound {
         self.0.clone().map(|k| k.encode().as_ref().to_vec())
     }
@@ -26,8 +25,7 @@ impl<K: Key> IntoScanRange for (Bound<K>, Bound<K>)
     }
 }
 
-impl<K: Key> IntoScanRange for Range<Bound<K>>
-{
+impl<K: Key> IntoScanRange for Range<Bound<K>> {
     fn start_scan_bound(&self) -> ScanBound {
         self.start.clone().map(|k| k.encode().as_ref().to_vec())
     }
@@ -37,14 +35,36 @@ impl<K: Key> IntoScanRange for Range<Bound<K>>
     }
 }
 
-pub (crate) fn prefixed_range<K, P, S>(prefix: P, range: impl RangeBounds<S>) -> (Bound<K>, Bound<K>)
+/// Composes suffix bounds with an already selected prefix.
+///
+/// This helper keeps prefix scan composition typed. Given a complete key `K`, a
+/// valid prefix `P`, and a range over `K`'s suffix `S`, it returns bounds over
+/// the complete key.
+///
+/// It does not encode the resulting bounds. Encoding happens later through
+/// [`IntoScanRange`], when a scan is compiled.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// # use std::ops::Bound;
+/// # use collette::bounds::prefixed_range;
+/// let bounds: (Bound<(u8, u64)>, Bound<(u8, u64)>) =
+///     prefixed_range(1u8, 10u64..20u64);
+///
+/// assert_eq!(bounds, (Bound::Included((1, 10)), Bound::Excluded((1, 20))));
+/// ```
+pub(crate) fn prefixed_range<K, P, S>(prefix: P, range: impl RangeBounds<S>) -> (Bound<K>, Bound<K>)
 where
     K: Key + Prefixable<P, Suffix = S>,
     P: Prefix,
-    S: Key
+    S: Key,
 {
     (
-        range.start_bound().cloned().map(|s| K::compose(prefix.clone(), s)),
+        range
+            .start_bound()
+            .cloned()
+            .map(|s| K::compose(prefix.clone(), s)),
         range.end_bound().cloned().map(|s| K::compose(prefix, s)),
     )
 }
@@ -75,10 +95,7 @@ mod tests {
 
         assert_eq!(
             range.range(),
-            (
-                Bound::Excluded(encode(1u32)),
-                Bound::Included(encode(3u32)),
-            )
+            (Bound::Excluded(encode(1u32)), Bound::Included(encode(3u32)),)
         );
     }
 
@@ -89,7 +106,10 @@ mod tests {
 
         assert_eq!(
             range,
-            (Bound::Excluded((7u32, 10u16)), Bound::Included((7u32, 20u16)))
+            (
+                Bound::Excluded((7u32, 10u16)),
+                Bound::Included((7u32, 20u16))
+            )
         );
     }
 
@@ -108,7 +128,10 @@ mod tests {
 
         assert_eq!(
             range,
-            (Bound::Included((7u32, 8u16, 9u8)), Bound::Excluded((7u32, 8u16, 10u8)))
+            (
+                Bound::Included((7u32, 8u16, 9u8)),
+                Bound::Excluded((7u32, 8u16, 10u8))
+            )
         );
     }
 

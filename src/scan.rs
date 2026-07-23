@@ -1,7 +1,31 @@
 //! Typed scan builders for secondary indexes.
 //!
 //! Scans are lazy: they collect bounds, direction, and cursor information until
-//! [`IndexScan::iter`] opens the backend stores and returns an iterator.
+//! [`Scan::iter`] opens the backend stores and returns an iterator.
+//!
+//! A scan starts from [`Collection::scan`](crate::Collection::scan), then can be
+//! refined with range, prefix, direction, and cursor steps:
+//!
+//! ```rust,ignore
+//! use collette::{Direction, Key, PrefixableScan, Scan};
+//!
+//! let users = collection.scan(ByStatusAndCreatedAt)?
+//!     .prefix(Status::Active)
+//!     .range(created_from..created_to)
+//!     .direction(Direction::LeftToRight);
+//!
+//! let page = users.iter()?;
+//!
+//! let cursor = (Status::Active, created_at, &user_id)
+//!     .encode()
+//!     .as_ref()
+//!     .to_vec();
+//!
+//! let next_page = collection.scan(ByStatusAndCreatedAt)?
+//!     .prefix(Status::Active)
+//!     .after(cursor)
+//!     .iter()?;
+//! ```
 
 use crate::bounds::{prefixed_range, IntoScanRange, ScanBound, ScanRange};
 use crate::error::Error;
@@ -23,9 +47,29 @@ pub enum Direction {
     RightToLeft,
 }
 
+/// Opens a compiled scan against its backing store.
+///
+/// This trait separates scan construction from execution. Scan builders compile
+/// down to byte bounds and a direction, then the executor opens the concrete
+/// iterator for the backend.
+///
+/// Application code usually does not implement or call this trait directly.
+/// Collection scans use Collette's index executor internally.
 pub trait ScanExecutor: Sized {
+    /// Iterator produced by this executor.
     type Iter;
 
+    /// Opens an iterator over `start..end` in `direction`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let iter = executor.open(
+    ///     std::ops::Bound::Unbounded,
+    ///     std::ops::Bound::Unbounded,
+    ///     Direction::LeftToRight,
+    /// )?;
+    /// ```
     fn open(
         self,
         start: ScanBound,
@@ -34,6 +78,10 @@ pub trait ScanExecutor: Sized {
     ) -> Result<Self::Iter, Error>;
 }
 
+/// A fully compiled scan ready to be executed.
+///
+/// A compiled scan contains encoded byte bounds, a direction, and the executor
+/// that knows how to open the backend iterator.
 pub struct CompiledScan<E: ScanExecutor> {
     executor: E,
     range: ScanRange,
@@ -41,11 +89,27 @@ pub struct CompiledScan<E: ScanExecutor> {
 }
 
 impl<E: ScanExecutor> CompiledScan<E> {
+    /// Opens the scan iterator.
+    ///
+    /// Most callers use [`Scan::iter`] instead, which compiles and opens the
+    /// scan in one step.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// let iter = compiled.iter()?;
+    /// ```
     pub fn iter(self) -> Result<E::Iter, Error> {
-        self.executor.open(self.range.0, self.range.1, self.direction)
+        self.executor
+            .open(self.range.0, self.range.1, self.direction)
     }
 }
 
+/// Executor used by collection index scans.
+///
+/// It opens the index store, applies the compiled bounds, and opens the primary
+/// collection store used by [`IndexIterator`] to load records.
 pub struct IndexExecutor<ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -68,7 +132,12 @@ where
 {
     type Iter = IndexIterator<ReadHandle::Store, Record>;
 
-    fn open(self, start: ScanBound, end: ScanBound, direction: Direction) -> Result<Self::Iter, Error> {
+    fn open(
+        self,
+        start: ScanBound,
+        end: ScanBound,
+        direction: Direction,
+    ) -> Result<Self::Iter, Error> {
         Ok(IndexIterator::new(
             self.read_handle
                 .open_store(Idx::NAME)
@@ -82,19 +151,55 @@ where
     }
 }
 
+/// Shared contract implemented by every scan builder in the chain.
+///
+/// The trait keeps scan builders composable: each builder can compile itself
+/// into a [`CompiledScan`], and callers can finish the chain with [`iter`](Self::iter).
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use collette::{Direction, Scan};
+///
+/// let iter = users.scan(ByEmail)?
+///     .direction(Direction::LeftToRight)
+///     .iter()?;
+/// ```
 pub trait Scan: Sized {
+    /// Logical index key accepted by range builders.
     type Key<'a>: Key
     where
         Self: 'a;
+    /// Executor used when the scan is opened.
     type Executor: ScanExecutor;
 
+    /// Compiles this builder into encoded scan bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// ```
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error>;
 
+    /// Compiles and opens this scan.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::Scan;
+    ///
+    /// let iter = users.scan(ByEmail)?.iter()?;
+    /// ```
     fn iter(self) -> Result<<Self::Executor as ScanExecutor>::Iter, Error> {
         self.compile()?.iter()
     }
 }
 
+/// Initial builder for a full index scan.
+///
+/// A full scan has no bounds and scans left-to-right by default. Use
+/// [`Collection::scan`](crate::Collection::scan) to create this builder.
 pub struct IndexFullScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -114,7 +219,8 @@ where
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
-    type Key<'b> = Idx::Key<'b>
+    type Key<'b>
+        = Idx::Key<'b>
     where
         Self: 'b;
     type Executor = IndexExecutor<ReadHandle, Record, Idx>;
@@ -136,6 +242,16 @@ where
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
+    /// Creates a full index scan from a read handle and collection store name.
+    ///
+    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::scan).
+    /// Application code should generally start scans from the collection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let scan = users.scan(ByEmail)?;
+    /// ```
     pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
         Self {
             executor: IndexExecutor {
@@ -147,6 +263,19 @@ where
         }
     }
 
+    /// Restricts the scan to a range over the logical index key.
+    ///
+    /// For a `Multi` index, this range is over the index key defined by
+    /// [`Index::Key`], not over the physical key with the
+    /// appended primary key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let active_recent = users.scan(ByStatusAndCreatedAt)?
+    ///     .range((Status::Active, from)..(Status::Active, to))
+    ///     .iter()?;
+    /// ```
     pub fn range<R>(self, range: R) -> RangeScan<'a, Self, R>
     where
         R: RangeBounds<<Self as Scan>::Key<'a>>,
@@ -158,6 +287,17 @@ where
         }
     }
 
+    /// Sets the scan direction.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, Scan};
+    ///
+    /// let newest_first = users.scan(ByCreatedAt)?
+    ///     .direction(Direction::RightToLeft)
+    ///     .iter()?;
+    /// ```
     pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
         DirectedScan {
             direction,
@@ -166,6 +306,26 @@ where
         }
     }
 
+    /// Starts the scan after an encoded cursor key.
+    ///
+    /// The cursor must be encoded with the same key layout used by the index
+    /// store. For a `Multi` index, this is typically the index key followed by
+    /// the primary key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Key, Scan};
+    ///
+    /// let cursor = (Status::Active, created_at, &user_id)
+    ///     .encode()
+    ///     .as_ref()
+    ///     .to_vec();
+    ///
+    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
     pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
@@ -175,15 +335,42 @@ where
     }
 }
 
+/// Adds typed prefix support to a scan.
+///
+/// A prefix is a leftmost part of the scan key. For an index key
+/// `(Status, CreatedAt)`, `Status` is a valid prefix and `CreatedAt` is the
+/// suffix that can be ranged over afterward.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use collette::{PrefixableScan, Scan};
+///
+/// let active = users.scan(ByStatusAndCreatedAt)?
+///     .prefix(Status::Active)
+///     .iter()?;
+/// ```
 pub trait PrefixableScan<'a, K: Key + Prefixable<P>, P: Prefix>: Scan
 where
     Self: 'a,
     <Self as Scan>::Key<'a>: Key + Prefixable<P>,
 {
+    /// Restricts the scan to keys beginning with `prefix`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{PrefixableScan, Scan};
+    ///
+    /// let active = users.scan(ByStatusAndCreatedAt)?
+    ///     .prefix(Status::Active)
+    ///     .iter()?;
+    /// ```
     fn prefix(self, prefix: P) -> PrefixedScan<'a, Self, P>;
 }
 
-impl<'a, ReadHandle, Record, Idx, P> PrefixableScan<'a, <Self as Scan>::Key<'a>, P> for IndexFullScan<'a, ReadHandle, Record, Idx>
+impl<'a, ReadHandle, Record, Idx, P> PrefixableScan<'a, <Self as Scan>::Key<'a>, P>
+    for IndexFullScan<'a, ReadHandle, Record, Idx>
 where
     Self: Scan,
     <Self as Scan>::Key<'a>: Key + Prefixable<P>,
@@ -202,6 +389,10 @@ where
     }
 }
 
+/// Scan builder restricted to a typed prefix.
+///
+/// Returned by [`PrefixableScan::prefix`]. It can be further refined with a
+/// suffix range, direction, or cursor.
 pub struct PrefixedScan<'a, S, P>
 where
     S: Scan + 'a,
@@ -220,7 +411,8 @@ where
     P: Prefix,
     S::Key<'a>: Prefixable<P>,
 {
-    type Key<'b> = S::Key<'b>
+    type Key<'b>
+        = S::Key<'b>
     where
         Self: 'b;
     type Executor = S::Executor;
@@ -238,6 +430,22 @@ where
     P: Prefix,
     S::Key<'a>: Prefixable<P>,
 {
+    /// Restricts the prefixed scan to a range over the remaining suffix.
+    ///
+    /// For an index key `(Status, CreatedAt)`, calling
+    /// `.prefix(Status::Active).range(from..to)` scans active records whose
+    /// `CreatedAt` value falls inside `from..to`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{PrefixableScan, Scan};
+    ///
+    /// let recently_active = users.scan(ByStatusAndCreatedAt)?
+    ///     .prefix(Status::Active)
+    ///     .range(created_from..created_to)
+    ///     .iter()?;
+    /// ```
     pub fn range<R>(self, range: R) -> RangeScan<'a, Self, (Bound<S::Key<'a>>, Bound<S::Key<'a>>)>
     where
         R: RangeBounds<<S::Key<'a> as Prefixable<P>>::Suffix>,
@@ -249,6 +457,18 @@ where
         }
     }
 
+    /// Sets the scan direction while keeping the prefix applied.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, PrefixableScan, Scan};
+    ///
+    /// let newest_active = users.scan(ByStatusAndCreatedAt)?
+    ///     .prefix(Status::Active)
+    ///     .direction(Direction::RightToLeft)
+    ///     .iter()?;
+    /// ```
     pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
         DirectedScan {
             direction,
@@ -257,6 +477,25 @@ where
         }
     }
 
+    /// Starts the prefixed scan after an encoded cursor key.
+    ///
+    /// The cursor must still be inside the selected prefix.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Key, PrefixableScan, Scan};
+    ///
+    /// let cursor = (Status::Active, created_at, &user_id)
+    ///     .encode()
+    ///     .as_ref()
+    ///     .to_vec();
+    ///
+    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    ///     .prefix(Status::Active)
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
     pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
@@ -266,6 +505,9 @@ where
     }
 }
 
+/// Scan builder restricted to a typed key range.
+///
+/// Returned by [`IndexFullScan::range`] or [`PrefixedScan::range`].
 pub struct RangeScan<'a, S, R>
 where
     S: Scan + 'a,
@@ -282,17 +524,15 @@ where
     S: Scan,
     R: RangeBounds<S::Key<'a>>,
 {
-    type Key<'b> = S::Key<'b>
+    type Key<'b>
+        = S::Key<'b>
     where
         Self: 'b;
     type Executor = S::Executor;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
-        scan.range = (
-            self.range.start_bound(),
-            self.range.end_bound(),
-        ).range();
+        scan.range = (self.range.start_bound(), self.range.end_bound()).range();
         Ok(scan)
     }
 }
@@ -302,6 +542,18 @@ where
     S: Scan,
     R: RangeBounds<S::Key<'a>>,
 {
+    /// Sets the scan direction while keeping the range applied.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, Scan};
+    ///
+    /// let descending = users.scan(ByCreatedAt)?
+    ///     .range(from..to)
+    ///     .direction(Direction::RightToLeft)
+    ///     .iter()?;
+    /// ```
     pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
         DirectedScan {
             direction,
@@ -310,6 +562,22 @@ where
         }
     }
 
+    /// Starts the ranged scan after an encoded cursor key.
+    ///
+    /// The cursor must fall inside the configured range.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Key, Scan};
+    ///
+    /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
+    ///
+    /// let next_page = users.scan(ByCreatedAt)?
+    ///     .range(from..to)
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
     pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
@@ -319,6 +587,9 @@ where
     }
 }
 
+/// Scan builder with an explicit direction.
+///
+/// Returned by `direction` methods on the other scan builders.
 pub struct DirectedScan<'a, S> {
     direction: Direction,
     inner: S,
@@ -330,7 +601,8 @@ impl<'a, S> Scan for DirectedScan<'a, S>
 where
     S: Scan,
 {
-    type Key<'b> = S::Key<'b>
+    type Key<'b>
+        = S::Key<'b>
     where
         Self: 'b;
     type Executor = S::Executor;
@@ -347,6 +619,23 @@ impl<'a, S> DirectedScan<'a, S>
 where
     S: Scan,
 {
+    /// Starts the directed scan after an encoded cursor key.
+    ///
+    /// For left-to-right scans, the cursor tightens the left bound. For
+    /// right-to-left scans, it tightens the right bound.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, Key, Scan};
+    ///
+    /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
+    ///
+    /// let previous_page = users.scan(ByCreatedAt)?
+    ///     .direction(Direction::RightToLeft)
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
     pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
@@ -356,6 +645,11 @@ where
     }
 }
 
+/// Scan builder with an encoded cursor applied.
+///
+/// Returned by `after` methods on the other scan builders. The cursor is
+/// validated when the scan is compiled; if it falls outside the configured
+/// bounds, iteration returns [`Error::CursorOutOfBounds`].
 pub struct AfterScan<'a, S>
 where
     S: Scan + 'a,
@@ -370,7 +664,8 @@ impl<'a, S> Scan for AfterScan<'a, S>
 where
     S: Scan,
 {
-    type Key<'b> = S::Key<'b>
+    type Key<'b>
+        = S::Key<'b>
     where
         Self: 'b;
     type Executor = S::Executor;

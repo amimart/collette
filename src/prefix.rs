@@ -66,12 +66,40 @@ where
 }
 
 /// Marker trait proving that `P` is a valid prefix for key `Self`.
+///
+/// Collette implements this trait for tuple keys whose leftmost elements can be
+/// used as a prefix. The associated [`Suffix`](Self::Suffix) is the remaining
+/// part of the key that can be ranged over after a prefix has been selected.
+///
+/// For example, `(Status, CreatedAt)` is [`Prefixable`] by `Status`, and its
+/// suffix is `CreatedAt`. This is what makes scans such as
+/// `scan.prefix(status).range(created_from..created_to)` type-check.
+///
+/// You normally do not implement this trait yourself unless you provide a
+/// custom composite key type. Application code usually relies on the tuple
+/// implementations provided by Collette.
+///
+/// # Examples
+///
+/// ```
+/// use collette::prefix::Prefixable;
+///
+/// type Key = (u8, u64);
+///
+/// let key = <Key as Prefixable<u8>>::compose(1, 42);
+/// assert_eq!(key, (1, 42));
+/// ```
 pub trait Prefixable<P>
 where
     P: Prefix,
 {
+    /// Remaining key part after `P` has been fixed.
     type Suffix: Key;
 
+    /// Rebuilds the complete key from a prefix and suffix.
+    ///
+    /// Scan builders use this to turn a suffix range into concrete key bounds
+    /// inside the selected prefix.
     fn compose(prefix: P, suffix: Self::Suffix) -> Self;
 }
 
