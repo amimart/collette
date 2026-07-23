@@ -127,6 +127,36 @@ where
         })
     }
 }
+
+pub struct PrefixedScan<'a, S, P>
+where
+    S: Scan + 'a,
+    P: Prefix,
+    S::Key<'a>: Prefixable<P>,
+{
+    prefix: P,
+    inner: S,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, S, P> Scan for PrefixedScan<'a, S, P>
+where
+    S: Scan,
+    P: Prefix,
+    S::Key<'a>: Prefixable<P>,
+{
+    type Key<'b> = S::Key<'b>
+    where
+        Self: 'b;
+    type Executor = S::Executor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        let mut scan = self.inner.compile()?;
+        scan.range = self.prefix.range();
+        Ok(scan)
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
