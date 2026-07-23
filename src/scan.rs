@@ -9,10 +9,10 @@ use crate::index::{Index, IndexKind, StoreKey};
 use crate::item::Item;
 use crate::iter::IndexIterator;
 use crate::key::Key;
-use crate::prefix::{Prefix, PrefixOrKey, Prefixable};
+use crate::prefix::{Prefix, Prefixable};
 use crate::store::{MultiStoreReadHandle, ReadKVStore};
 use std::marker::PhantomData;
-use std::ops::{Bound, Range, RangeBounds};
+use std::ops::{Bound, RangeBounds};
 
 /// Iteration direction for range scans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

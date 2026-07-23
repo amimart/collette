@@ -100,7 +100,7 @@ pub use index::{Index, Multi, Unique};
 pub use item::Item;
 pub use key::{Key, KeySize};
 pub use scan::{
-    AfterScan, BoundedScan, CompiledScan, DirectedScan, Direction, IndexFullScan, PrefixedScan,
+    AfterScan, CompiledScan, DirectedScan, Direction, IndexFullScan, PrefixedScan,
     RangeScan, Scan, ScanExecutor,
 };
 

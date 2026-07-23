@@ -65,17 +65,6 @@ where
     }
 }
 
-/// Scan endpoint that can be either a prefix or a complete key.
-///
-/// This is useful when a range starts at a prefix boundary and ends at a precise
-/// key, or the reverse.
-pub enum PrefixOrKey<K: Key + Prefixable<P>, P: Prefix> {
-    /// Prefix endpoint.
-    Prefix(P),
-    /// Full-key endpoint.
-    Key(K),
-}
-
 /// Marker trait proving that `P` is a valid prefix for key `Self`.
 pub trait Prefixable<P>
 where
