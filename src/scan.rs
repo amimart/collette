@@ -5,7 +5,7 @@
 
 use crate::bounds::{prefixed_range, IntoScanRange, ScanBound, ScanRange};
 use crate::error::Error;
-use crate::index::{Index, IndexKind, StoreKey};
+use crate::index::{Index, IndexKind};
 use crate::item::Item;
 use crate::iter::IndexIterator;
 use crate::key::Key;
