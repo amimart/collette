@@ -3,7 +3,7 @@
 //! Prefix scans turn an encoded key prefix into the smallest range that contains
 //! every key beginning with those bytes.
 
-use crate::bounds::IntoScanBounds;
+use crate::bounds::{IntoScanRange, ScanBound};
 use crate::key::Key;
 use std::ops::Bound;
 
@@ -13,8 +13,8 @@ pub trait Prefix: Key {
     fn encode_prefix(&self) -> Vec<u8>;
 }
 
-impl<P: Prefix> IntoScanBounds for P {
-    fn start_bound(&self) -> Bound<Vec<u8>> {
+impl<P: Prefix> IntoScanRange for P {
+    fn start_scan_bound(&self) -> ScanBound {
         let bytes = self.encode_prefix();
         if bytes.is_empty() {
             return Bound::Unbounded;
@@ -23,7 +23,7 @@ impl<P: Prefix> IntoScanBounds for P {
         Bound::Included(self.encode_prefix())
     }
 
-    fn end_bound(&self) -> Bound<Vec<u8>> {
+    fn end_scan_bound(&self) -> ScanBound {
         let bytes = self.encode_prefix();
         if bytes.is_empty() {
             return Bound::Unbounded;
@@ -202,24 +202,24 @@ mod tests {
     fn raw_prefix_bounds_are_unbounded_for_empty_prefix() {
         let prefix = RawPrefix(vec![]);
 
-        assert_eq!(prefix.start_bound(), Bound::Unbounded);
-        assert_eq!(prefix.end_bound(), Bound::Unbounded);
+        assert_eq!(prefix.start_scan_bound(), Bound::Unbounded);
+        assert_eq!(prefix.end_scan_bound(), Bound::Unbounded);
     }
 
     #[test]
     fn raw_prefix_bounds_cover_prefixed_bytes() {
         let prefix = RawPrefix(vec![0x01, 0x02]);
 
-        assert_eq!(prefix.start_bound(), Bound::Included(vec![0x01, 0x02]));
-        assert_eq!(prefix.end_bound(), Bound::Excluded(vec![0x01, 0x03]));
+        assert_eq!(prefix.start_scan_bound(), Bound::Included(vec![0x01, 0x02]));
+        assert_eq!(prefix.end_scan_bound(), Bound::Excluded(vec![0x01, 0x03]));
     }
 
     #[test]
     fn raw_prefix_bounds_without_finite_end_are_upper_unbounded() {
         let prefix = RawPrefix(vec![0xff]);
 
-        assert_eq!(prefix.start_bound(), Bound::Included(vec![0xff]));
-        assert_eq!(prefix.end_bound(), Bound::Unbounded);
+        assert_eq!(prefix.start_scan_bound(), Bound::Included(vec![0xff]));
+        assert_eq!(prefix.end_scan_bound(), Bound::Unbounded);
     }
 
     #[test]

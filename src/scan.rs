@@ -3,7 +3,7 @@
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`IndexScan::iter`] opens the backend stores and returns an iterator.
 
-use crate::bounds::{prefixed_range, IntoScanBounds, ScanBound, ScanRange};
+use crate::bounds::{prefixed_range, IntoScanRange, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind, StoreKey};
 use crate::item::Item;
