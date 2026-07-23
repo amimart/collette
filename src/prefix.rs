@@ -169,12 +169,27 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::key::KeySize;
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
     struct RawPrefix(Vec<u8>);
 
-    impl Prefix for RawPrefix {
-        fn encode_prefix(&self) -> Vec<u8> {
+    impl Key for RawPrefix {
+        const SIZE: KeySize = KeySize::Variable;
+
+        type OwnedKey = RawPrefix;
+
+        type EncodedBytes<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn encode(&self) -> Self::EncodedBytes<'_> {
             self.0.clone()
+        }
+
+        fn decode_part(_: &[u8]) -> (Self::OwnedKey, &[u8]) {
+            unimplemented!("RawPrefix is only used as an encoded prefix test fixture")
         }
     }
 
