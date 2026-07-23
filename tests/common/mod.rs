@@ -25,6 +25,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     unique_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     multi_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
+    prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
 }
 
 #[macro_export]
@@ -95,6 +96,11 @@ macro_rules! collection_contract_tests {
             $crate::common::scans_filter_lexicographically_with_ranges_directions_and_cursors(
                 &$make_db,
             );
+        }
+
+        #[test]
+        fn prefixed_ranges_are_clamped_to_the_selected_prefix() {
+            $crate::common::prefixed_ranges_are_clamped_to_the_selected_prefix(&$make_db);
         }
     };
 }
@@ -407,6 +413,53 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
+}
+
+pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
+    make_db: &impl Fn() -> DB,
+) {
+    let users = seeded_user_collection("prefixed_ranges_are_clamped", make_db());
+
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(AccountStatus::Active..)
+        ),
+        vec!["ada", "grace", "linus"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..AccountStatus::Suspended)
+        ),
+        vec!["ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..)
+        ),
+        vec!["ada", "grace", "linus"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix(("core", AccountStatus::Active))
+                .range(2u16..)
+        ),
+        vec!["grace"]
+    );
 }
 
 pub type UserCollection<DB> = Collection<
