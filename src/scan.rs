@@ -157,6 +157,37 @@ where
         Ok(scan)
     }
 }
+
+pub struct RangeScan<'a, S, R>
+where
+    S: Scan + 'a,
+    R: RangeBounds<S::Key<'a>>,
+{
+    range: R,
+    inner: S,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, S, R> Scan for RangeScan<'a, S, R>
+where
+    S: Scan,
+    R: RangeBounds<S::Key<'a>>,
+{
+    type Key<'b> = S::Key<'b>
+    where
+        Self: 'b;
+    type Executor = S::Executor;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        let mut scan = self.inner.compile()?;
+        scan.range = (
+            self.range.start_bound(),
+            self.range.end_bound(),
+        ).range();
+        Ok(scan)
+    }
+}
 /// Lazy builder for scanning a collection index.
 ///
 /// Use [`Collection::scan`](crate::Collection::scan) to create one, then add
