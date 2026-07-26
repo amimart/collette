@@ -29,6 +29,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
     multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
     collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(&make_db);
+    scans_resume_from_returned_cursors(&make_db);
 }
 
 #[macro_export]
@@ -116,6 +117,11 @@ macro_rules! collection_contract_tests {
             $crate::common::collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(
                 &$make_db,
             );
+        }
+
+        #[test]
+        fn scans_resume_from_returned_cursors() {
+            $crate::common::scans_resume_from_returned_cursors(&$make_db);
         }
     };
 }
@@ -564,6 +570,47 @@ pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<D
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
+}
+
+pub fn scans_resume_from_returned_cursors<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("scan_returned_cursors", make_db());
+
+    let first = users
+        .scan()
+        .unwrap()
+        .iter()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.record.handle, "ada");
+
+    assert_eq!(
+        scan_handles(users.scan().unwrap().after(first.key)),
+        vec!["grace", "linus", "margaret", "yukihiro", "dennis"]
+    );
+
+    let first_core = users
+        .index_scan(ByTeamStatusSeat)
+        .unwrap()
+        .prefix("core")
+        .iter()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(first_core.record.handle, "ada");
+
+    assert_eq!(
+        scan_handles(
+            users
+                .index_scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix("core")
+                .after(first_core.key)
+        ),
+        vec!["grace"]
+    );
 }
 
 pub type UserCollection<DB> = Collection<
