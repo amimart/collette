@@ -79,3 +79,49 @@ where
         })
     }
 }
+
+pub struct CollectionIterator<Store, Record>
+where
+    Store: ReadKVStore,
+    Record: Item,
+{
+    inner: Store::Iter,
+
+    _marker: PhantomData<Record>,
+}
+
+impl<Store, Record> CollectionIterator<Store, Record>
+where
+    Store: ReadKVStore,
+    Record: Item,
+{
+    pub fn new(inner: Store::Iter) -> Self {
+        Self {
+            inner,
+
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<Store, Record> Iterator for CollectionIterator<Store, Record>
+where
+    Store: ReadKVStore,
+    Record: Item,
+{
+    type Item = Result<IndexEntry<Record>, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|res| {
+            res.map_err(Error::backend).and_then(|entry| {
+                let record = Record::from_bytes(entry.value()).map_err(Error::codec)?;
+
+                Ok(IndexEntry {
+                    record,
+                    key: Cursor(entry.key().to_vec()),
+                })
+            })
+        })
+    }
+}
+
