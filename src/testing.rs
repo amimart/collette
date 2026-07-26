@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, coverage(off))]
+
 //! Reusable mock implementations of the [`crate::store`] traits for use across
 //! test modules.
 //!
