@@ -1,10 +1,65 @@
 use crate::key::Key;
-use crate::prefix::{Prefix, Prefixable};
+use crate::prefix::{prefix_end, Prefix, Prefixable};
 use std::ops::{Bound, Range, RangeBounds};
 
 pub(crate) type ScanBound = Bound<Vec<u8>>;
 pub(crate) type ScanRange = (ScanBound, ScanBound);
 
+pub trait BoundsEncoder<K: Key> {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound;
+
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound;
+
+    fn encode_range(range: impl RangeBounds<K>) -> ScanRange {
+        (
+            Self::encode_start_bound(range.start_bound().cloned()),
+            Self::encode_end_bound(range.end_bound().cloned()),
+        )
+    }
+
+    /// Composes suffix bounds with an already selected prefix.
+    ///
+    /// This helper compiles prefix scan composition. Given a complete key `K`, a
+    /// valid prefix `P`, and a range over `K`'s suffix `S`, it returns encoded scan
+    /// bounds clamped to the selected prefix.
+    fn encode_prefixed_range<P, S>(prefix: P, range: impl RangeBounds<S>) -> ScanRange
+    where
+        K: Prefixable<P, Suffix = S>,
+        P: Prefix,
+        S: Key,
+    {
+        let (prefix_start, prefix_end) = Self::encode_prefix(&prefix);
+        (
+            match range.start_bound().cloned() {
+                Bound::Included(suffix) => {
+                    Self::encode_start_bound(Bound::Included(K::compose(prefix.clone(), suffix)))
+                }
+                Bound::Excluded(suffix) => {
+                    Self::encode_start_bound(Bound::Excluded(K::compose(prefix.clone(), suffix)))
+                }
+                Bound::Unbounded => prefix_start,
+            },
+            match range.end_bound().cloned() {
+                Bound::Included(suffix) => {
+                    Self::encode_end_bound(Bound::Included(K::compose(prefix, suffix)))
+                }
+                Bound::Excluded(suffix) => {
+                    Self::encode_end_bound(Bound::Excluded(K::compose(prefix, suffix)))
+                }
+                Bound::Unbounded => prefix_end,
+            },
+        )
+    }
+
+    fn encode_prefix<P>(prefix: &P) -> ScanRange
+    where
+        K: Prefixable<P>,
+        P: Prefix,
+    {
+        let bound = prefix.encode_prefix();
+        (Bound::Included(bound.clone()), prefix_end(bound))
+    }
+}
 pub(crate) trait IntoScanRange {
     fn start_scan_bound(&self) -> ScanBound;
 
