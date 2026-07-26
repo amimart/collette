@@ -47,7 +47,7 @@
 
 use crate::bounds::{BoundsEncoder, ExactEncoder, ScanBound, ScanRange};
 use crate::error::Error;
-use crate::index::{Index, IndexKind};
+use crate::index::{Index, IndexKind, UniqueIndexKind};
 use crate::item::Item;
 use crate::iter::{CollectionIterator, Cursor, IndexIterator};
 use crate::key::Key;
@@ -403,6 +403,61 @@ where
             inner: self,
             _marker: Default::default(),
         }
+    }
+}
+
+impl<'a, ReadHandle, Record, Idx> IndexScan<'a, ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item + 'a,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: UniqueIndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    /// Retrieves a record by unique index key.
+    ///
+    /// This method is only available for indexes whose [`IndexKind`] is
+    /// [`Unique`](crate::Unique). It first resolves the primary key from the
+    /// unique index, then loads and decodes the associated record from the
+    /// collection store.
+    ///
+    /// Returns `Ok(None)` when no record exists for the given index key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let user = users
+    ///     .index_scan(ByEmail)?
+    ///     .get("ada@example.test".to_string())?;
+    /// ```
+    pub fn get(
+        self,
+        key: impl std::borrow::Borrow<<<Idx as Index<Record>>::Key<'a> as Key>::OwnedKey>,
+    ) -> Result<Option<Record>, Error> {
+        let index_key = key.borrow().encode();
+        let index_store = self
+            .executor
+            .read_handle
+            .open_store(Idx::NAME)
+            .map_err(Error::backend)?;
+        let primary_key = index_store.get(index_key).map_err(Error::backend)?;
+
+        let Some(primary_key) = primary_key else {
+            return Ok(None);
+        };
+
+        let primary_store = self
+            .executor
+            .read_handle
+            .open_store(self.executor.collection_name)
+            .map_err(Error::backend)?;
+
+        let record = primary_store
+            .get(primary_key.as_ref())
+            .map_err(Error::backend)?
+            .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
+            .transpose()?;
+
+        Ok(record)
     }
 }
 
