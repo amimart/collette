@@ -13,6 +13,9 @@ categories = ["database", "data-structures"]
 name = "collette"
 path = "src/lib.rs"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
+
 [features]
 default = ["memory"]
 memory = []
