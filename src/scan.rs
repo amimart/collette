@@ -970,14 +970,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index::{Index, Multi};
+    use crate::index::{Index, Multi, Unique};
     use crate::item::Item;
     use crate::key::Key;
     use crate::prefix::encoded_prefix_range;
     use crate::store::MultiStore;
     use crate::testing::{MockDb, MockReadHandle, ScanLog};
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq, Eq)]
     struct Record {
         id: u32,
         group: u32,
@@ -993,15 +993,33 @@ mod tests {
         }
 
         fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
-            Ok(vec![])
+            Ok(self.id.to_be_bytes().to_vec())
         }
 
-        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
+        fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let id = u32::from_be_bytes(
+                bytes
+                    .try_into()
+                    .map_err(|_| std::io::Error::other("bad length"))?,
+            );
             Ok(Self {
-                id: 0,
+                id,
                 group: 0,
                 number: 0,
             })
+        }
+    }
+
+    struct ByUniqueNumber;
+
+    impl Index<Record> for ByUniqueNumber {
+        type Key<'a> = u32;
+        type Kind<'a> = Unique;
+
+        const NAME: &'static str = "unique_number";
+
+        fn key(item: &Record) -> Self::Key<'_> {
+            item.number
         }
     }
 
@@ -1070,6 +1088,51 @@ mod tests {
                 Direction::LeftToRight,
             )),
         );
+    }
+
+    #[test]
+    fn unique_index_scan_get_loads_record_by_index_key() {
+        let primary_key = encode_primary_key(7);
+        let record = Record {
+            id: 7,
+            group: 2,
+            number: 99,
+        };
+        let db = MockDb::new()
+            .with_data(ByUniqueNumber::NAME, 99u32.encode(), primary_key.clone())
+            .with_data("records", primary_key.clone(), record.to_bytes().unwrap());
+        let log = db.log();
+        let read = db.read("records").unwrap();
+
+        let found = IndexScan::<_, Record, ByUniqueNumber>::new(read, "records")
+            .get(99u32)
+            .unwrap();
+
+        assert_eq!(
+            found,
+            Some(Record {
+                id: 7,
+                group: 0,
+                number: 0
+            })
+        );
+        assert_eq!(log.borrow().opens, vec![ByUniqueNumber::NAME, "records"]);
+        assert_eq!(log.borrow().gets, vec![encode_primary_key(99), primary_key]);
+    }
+
+    #[test]
+    fn unique_index_scan_get_returns_none_when_index_key_is_missing() {
+        let db = MockDb::new();
+        let log = db.log();
+        let read = db.read("records").unwrap();
+
+        let found = IndexScan::<_, Record, ByUniqueNumber>::new(read, "records")
+            .get(99u32)
+            .unwrap();
+
+        assert_eq!(found, None);
+        assert_eq!(log.borrow().opens, vec![ByUniqueNumber::NAME]);
+        assert_eq!(log.borrow().gets, vec![encode_primary_key(99)]);
     }
 
     #[test]
