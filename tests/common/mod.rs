@@ -26,6 +26,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     multi_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
+    multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
 }
 
 #[macro_export]
@@ -101,6 +102,11 @@ macro_rules! collection_contract_tests {
         #[test]
         fn prefixed_ranges_are_clamped_to_the_selected_prefix() {
             $crate::common::prefixed_ranges_are_clamped_to_the_selected_prefix(&$make_db);
+        }
+
+        #[test]
+        fn multi_index_ranges_apply_bounds_to_logical_keys() {
+            $crate::common::multi_index_ranges_apply_bounds_to_logical_keys(&$make_db);
         }
     };
 }
@@ -459,6 +465,50 @@ pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
                 .range(2u16..)
         ),
         vec!["grace"]
+    );
+}
+
+pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("multi_index_logical_range_bounds", make_db());
+
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .range(..=(Region::Europe, AccountStatus::Active))
+        ),
+        vec!["margaret", "dennis", "ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(users.scan(ByRegionStatus).unwrap().range((
+            std::ops::Bound::Excluded((Region::Europe, AccountStatus::Active)),
+            std::ops::Bound::Unbounded,
+        ))),
+        vec!["linus", "yukihiro"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..=AccountStatus::Active)
+        ),
+        vec!["ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range((
+                    std::ops::Bound::Excluded(AccountStatus::Active),
+                    std::ops::Bound::Unbounded,
+                ))
+        ),
+        vec!["linus"]
     );
 }
 
