@@ -1152,6 +1152,77 @@ mod tests {
         );
     }
 
+    #[test]
+    fn collection_scan_opens_unbounded_left_to_right() {
+        assert_collection_scan(
+            |scan| scan,
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_range_encodes_primary_key_bounds() {
+        assert_collection_scan(
+            |scan| scan.range(10u32..20u32),
+            Ok(scan_log(
+                Bound::Included(encode_primary_key(10)),
+                Bound::Excluded(encode_primary_key(20)),
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_direction_overrides_iteration_direction() {
+        assert_collection_scan(
+            |scan| scan.direction(Direction::RightToLeft),
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_after_tightens_left_bound() {
+        assert_collection_scan(
+            |scan| scan.after(encode_primary_key(10)),
+            Ok(scan_log(
+                Bound::Excluded(encode_primary_key(10)),
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_right_to_left_after_tightens_right_bound() {
+        assert_collection_scan(
+            |scan| {
+                scan.direction(Direction::RightToLeft)
+                    .after(encode_primary_key(10))
+            },
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Excluded(encode_primary_key(10)),
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_cursor_outside_bounds_fails_before_opening_stores() {
+        assert_collection_scan(
+            |scan| scan.range(10u32..20u32).after(encode_primary_key(30)),
+            Err(ErrorKind::CursorOutOfBounds),
+        );
+    }
+
     fn assert_scan<S>(
         build: impl FnOnce(IndexScan<'static, MockReadHandle, Record, ByNumber>) -> S,
         expected: Result<ScanLog, ErrorKind>,
@@ -1162,6 +1233,29 @@ mod tests {
         let log = db.log();
         let read = db.read("records").unwrap();
         let scan = build(IndexScan::<_, Record, ByNumber>::new(read, "records"));
+
+        match expected {
+            Ok(expected) => {
+                scan.iter().unwrap();
+                assert_eq!(log.borrow().scans, vec![expected]);
+            }
+            Err(ErrorKind::CursorOutOfBounds) => {
+                assert!(matches!(scan.iter(), Err(Error::CursorOutOfBounds)));
+                assert!(log.borrow().scans.is_empty());
+            }
+        }
+    }
+
+    fn assert_collection_scan<S>(
+        build: impl FnOnce(CollectionScan<'static, MockReadHandle, Record>) -> S,
+        expected: Result<ScanLog, ErrorKind>,
+    ) where
+        S: Scan<Executor = CollectionScanExecutor<MockReadHandle, Record>>,
+    {
+        let db = MockDb::new();
+        let log = db.log();
+        let read = db.read("records").unwrap();
+        let scan = build(CollectionScan::<_, Record>::new(read, "records"));
 
         match expected {
             Ok(expected) => {
@@ -1190,6 +1284,10 @@ mod tests {
 
     fn encode_prefix(group: u32) -> Vec<u8> {
         group.encode().as_ref().to_vec()
+    }
+
+    fn encode_primary_key(id: u32) -> Vec<u8> {
+        id.encode().as_ref().to_vec()
     }
 
     fn encode_index_key(group: u32, number: u32) -> Vec<u8> {
