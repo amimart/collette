@@ -110,7 +110,7 @@ impl<E: ScanExecutor> CompiledScan<E> {
 ///
 /// It opens the index store, applies the compiled bounds, and opens the primary
 /// collection store used by [`IndexIterator`] to load records.
-pub struct IndexExecutor<ReadHandle, Record, Idx>
+pub struct IndexScanExecutor<ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -123,7 +123,7 @@ where
     _marker: PhantomData<(Record, Idx)>,
 }
 
-impl<ReadHandle, Record, Idx> ScanExecutor for IndexExecutor<ReadHandle, Record, Idx>
+impl<ReadHandle, Record, Idx> ScanExecutor for IndexScanExecutor<ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -211,7 +211,7 @@ where
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
-    executor: IndexExecutor<ReadHandle, Record, Idx>,
+    executor: IndexScanExecutor<ReadHandle, Record, Idx>,
 
     _marker: PhantomData<&'a ()>,
 }
@@ -227,7 +227,7 @@ where
         = Idx::Key<'b>
     where
         Self: 'b;
-    type Executor = IndexExecutor<ReadHandle, Record, Idx>;
+    type Executor = IndexScanExecutor<ReadHandle, Record, Idx>;
     type BoundsEncoder<'b>
         = <Idx::Kind<'b> as IndexKind<Idx::Key<'b>, Record::Key<'b>>>::BoundsEncoder
     where
@@ -262,7 +262,7 @@ where
     /// ```
     pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
         Self {
-            executor: IndexExecutor {
+            executor: IndexScanExecutor {
                 collection_name,
                 read_handle,
                 _marker: Default::default(),
@@ -991,7 +991,7 @@ mod tests {
         build: impl FnOnce(IndexScan<'static, MockReadHandle, Record, ByNumber>) -> S,
         expected: Result<ScanLog, ErrorKind>,
     ) where
-        S: Scan<Executor = IndexExecutor<MockReadHandle, Record, ByNumber>>,
+        S: Scan<Executor = IndexScanExecutor<MockReadHandle, Record, ByNumber>>,
     {
         let db = MockDb::new();
         let log = db.log();
