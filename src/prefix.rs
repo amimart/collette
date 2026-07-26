@@ -3,7 +3,6 @@
 //! Prefix scans turn an encoded key prefix into the smallest range that contains
 //! every key beginning with those bytes.
 
-use crate::bounds::{IntoScanRange, ScanBound};
 use crate::key::Key;
 use std::ops::Bound;
 
@@ -11,26 +10,6 @@ use std::ops::Bound;
 pub trait Prefix: Key {
     /// Encodes this prefix using the same ordered bytes as a full key.
     fn encode_prefix(&self) -> Vec<u8>;
-}
-
-impl<P: Prefix> IntoScanRange for P {
-    fn start_scan_bound(&self) -> ScanBound {
-        let bytes = self.encode_prefix();
-        if bytes.is_empty() {
-            return Bound::Unbounded;
-        }
-
-        Bound::Included(self.encode_prefix())
-    }
-
-    fn end_scan_bound(&self) -> ScanBound {
-        let bytes = self.encode_prefix();
-        if bytes.is_empty() {
-            return Bound::Unbounded;
-        }
-
-        prefix_end(bytes)
-    }
 }
 
 pub(crate) fn prefix_end(mut bytes: Vec<u8>) -> Bound<Vec<u8>> {
@@ -176,29 +155,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key::KeySize;
-
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    struct RawPrefix(Vec<u8>);
-
-    impl Key for RawPrefix {
-        const SIZE: KeySize = KeySize::Variable;
-
-        type OwnedKey = RawPrefix;
-
-        type EncodedBytes<'a>
-            = Vec<u8>
-        where
-            Self: 'a;
-
-        fn encode(&self) -> Self::EncodedBytes<'_> {
-            self.0.clone()
-        }
-
-        fn decode_part(_: &[u8]) -> (Self::OwnedKey, &[u8]) {
-            unimplemented!("RawPrefix is only used as an encoded prefix test fixture")
-        }
-    }
 
     #[test]
     fn prefix_end_returns_exclusive_successor() {
@@ -214,30 +170,6 @@ mod tests {
         for (prefix, expected) in cases {
             assert_eq!(prefix_end(prefix), expected);
         }
-    }
-
-    #[test]
-    fn raw_prefix_bounds_are_unbounded_for_empty_prefix() {
-        let prefix = RawPrefix(vec![]);
-
-        assert_eq!(prefix.start_scan_bound(), Bound::Unbounded);
-        assert_eq!(prefix.end_scan_bound(), Bound::Unbounded);
-    }
-
-    #[test]
-    fn raw_prefix_bounds_cover_prefixed_bytes() {
-        let prefix = RawPrefix(vec![0x01, 0x02]);
-
-        assert_eq!(prefix.start_scan_bound(), Bound::Included(vec![0x01, 0x02]));
-        assert_eq!(prefix.end_scan_bound(), Bound::Excluded(vec![0x01, 0x03]));
-    }
-
-    #[test]
-    fn raw_prefix_bounds_without_finite_end_are_upper_unbounded() {
-        let prefix = RawPrefix(vec![0xff]);
-
-        assert_eq!(prefix.start_scan_bound(), Bound::Included(vec![0xff]));
-        assert_eq!(prefix.end_scan_bound(), Bound::Unbounded);
     }
 
     #[test]
