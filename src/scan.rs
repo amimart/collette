@@ -208,6 +208,7 @@ pub trait Scan: Sized {
     type Key<'a>: Key
     where
         Self: 'a;
+
     /// Executor used when the scan is opened.
     type Executor: ScanExecutor;
 
@@ -265,7 +266,9 @@ where
         = Idx::Key<'b>
     where
         Self: 'b;
+
     type Executor = IndexScanExecutor<ReadHandle, Record, Idx>;
+
     type BoundsEncoder<'b>
         = <Idx::Kind<'b> as IndexKind<Idx::Key<'b>, Record::Key<'b>>>::BoundsEncoder
     where
@@ -398,13 +401,15 @@ where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
 {
-    type Key<'b> = Record::Key<'b>
+    type Key<'b>
+        = Record::Key<'b>
     where
         Self: 'b;
 
     type Executor = CollectionScanExecutor<ReadHandle, Record>;
 
-    type BoundsEncoder<'c> = ExactEncoder
+    type BoundsEncoder<'c>
+        = ExactEncoder
     where
         Self: 'c;
 
