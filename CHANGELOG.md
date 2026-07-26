@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.0 - 2026-07-26
+
+### Breaking Changes
+
+* ✨Rework scan API by @amimart in <https://github.com/amimart/collette/pull/33>
+* ✨Allow colscan by @amimart in <https://github.com/amimart/collette/pull/34>
+
+### Features
+
+* ✨Enhance cursor API by @amimart in <https://github.com/amimart/collette/pull/35>
+* ✨Allow fetching a record from its unique index key by @amimart in <https://github.com/amimart/collette/pull/37>
+
+### Other Changes
+
+* build(deps): bump actions/labeler from 6 to 7 by @dependabot[bot] in <https://github.com/amimart/collette/pull/31>
+* build(deps): bump thiserror from 2.0.18 to 2.0.19 by @dependabot[bot] in <https://github.com/amimart/collette/pull/32>
+* 🧪 Hide test code from coverage by @amimart in <https://github.com/amimart/collette/pull/36>
+
+**Full Changelog**: <https://github.com/amimart/collette/compare/v0.2.0...v0.3.0>
+
 ## v0.2.0 - 2026-07-16
 
 ### Breaking Changes
