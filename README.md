@@ -193,23 +193,28 @@ impl Index<User> for ByStatusAndCreatedAt {
 Then scan it by prefix or by range with cursor support:
 
 ```rust
+use collette::{Direction, Key, PrefixableScan, Scan};
+
 let active_users = users.scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
     .direction(Direction::LeftToRight)
     .iter()?;
 
 let recently_active_users = users.scan(ByStatusAndCreatedAt)?
-    .prefix_range(
-        Bound::Included((Status::Active, 1_700_000_000))
-            ..Bound::Excluded((Status::Active, 1_800_000_000)),
-    )
+    .prefix(Status::Active)
+    .range(1_700_000_000..1_800_000_000)
     .direction(Direction::LeftToRight)
     .iter()?;
 
-let last_seen_user_id = 42;
+let last_seen_user_id = 42u64;
+let cursor = (Status::Active, 1_700_010_000u64, &last_seen_user_id)
+    .encode()
+    .as_ref()
+    .to_vec();
+
 let next_page = users.scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
-    .after((Status::Active, 1_700_010_000, &last_seen_user_id))
     .direction(Direction::LeftToRight)
+    .after(cursor)
     .iter()?;
 ```

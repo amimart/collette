@@ -1,65 +1,93 @@
 use crate::key::Key;
-use crate::prefix::{Prefix, PrefixOrKey, Prefixable};
-use std::ops::Bound;
+use crate::prefix::{prefix_end, Prefix, Prefixable};
+use std::ops::{Bound, RangeBounds};
 
 pub(crate) type ScanBound = Bound<Vec<u8>>;
 pub(crate) type ScanRange = (ScanBound, ScanBound);
 
-pub(crate) trait IntoScanBounds {
-    fn start_bound(&self) -> ScanBound;
+pub trait BoundsEncoder<K: Key> {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound;
 
-    fn end_bound(&self) -> ScanBound;
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound;
+
+    fn encode_range(range: impl RangeBounds<K>) -> ScanRange {
+        (
+            Self::encode_start_bound(range.start_bound().cloned()),
+            Self::encode_end_bound(range.end_bound().cloned()),
+        )
+    }
+
+    /// Composes suffix bounds with an already selected prefix.
+    ///
+    /// This helper compiles prefix scan composition. Given a complete key `K`, a
+    /// valid prefix `P`, and a range over `K`'s suffix `S`, it returns encoded scan
+    /// bounds clamped to the selected prefix.
+    fn encode_prefixed_range<P, S>(prefix: P, range: impl RangeBounds<S>) -> ScanRange
+    where
+        K: Prefixable<P, Suffix = S>,
+        P: Prefix,
+        S: Key,
+    {
+        let (prefix_start, prefix_end) = Self::encode_prefix(&prefix);
+        (
+            match range.start_bound().cloned() {
+                Bound::Included(suffix) => {
+                    Self::encode_start_bound(Bound::Included(K::compose(prefix.clone(), suffix)))
+                }
+                Bound::Excluded(suffix) => {
+                    Self::encode_start_bound(Bound::Excluded(K::compose(prefix.clone(), suffix)))
+                }
+                Bound::Unbounded => prefix_start,
+            },
+            match range.end_bound().cloned() {
+                Bound::Included(suffix) => {
+                    Self::encode_end_bound(Bound::Included(K::compose(prefix, suffix)))
+                }
+                Bound::Excluded(suffix) => {
+                    Self::encode_end_bound(Bound::Excluded(K::compose(prefix, suffix)))
+                }
+                Bound::Unbounded => prefix_end,
+            },
+        )
+    }
+
+    fn encode_prefix<P>(prefix: &P) -> ScanRange
+    where
+        K: Prefixable<P>,
+        P: Prefix,
+    {
+        let bound = prefix.encode_prefix();
+        (Bound::Included(bound.clone()), prefix_end(bound))
+    }
 }
 
-impl<P: Prefix> IntoScanBounds for Bound<P> {
-    fn start_bound(&self) -> Bound<Vec<u8>> {
-        match self {
-            Bound::Included(prefix) => prefix.start_bound(),
-            Bound::Excluded(prefix) => prefix.end_bound(),
-            Bound::Unbounded => Bound::Unbounded,
-        }
+pub struct ExactEncoder {}
+
+impl<K: Key> BoundsEncoder<K> for ExactEncoder {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound {
+        bound.map(|k| k.encode().as_ref().to_vec())
     }
 
-    fn end_bound(&self) -> Bound<Vec<u8>> {
-        match self {
-            Bound::Included(prefix) => prefix.end_bound(),
-            Bound::Excluded(prefix) => match prefix.start_bound() {
-                Bound::Included(bytes) | Bound::Excluded(bytes) => Bound::Excluded(bytes),
-                Bound::Unbounded => Bound::Unbounded,
-            },
-            Bound::Unbounded => Bound::Unbounded,
-        }
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound {
+        bound.map(|k| k.encode().as_ref().to_vec())
     }
 }
 
-impl<K: Key + Prefixable<P>, P: Prefix> IntoScanBounds for Bound<PrefixOrKey<K, P>> {
-    fn start_bound(&self) -> Bound<Vec<u8>> {
-        match self {
-            Bound::Included(PrefixOrKey::Prefix(prefix)) => prefix.start_bound(),
-            Bound::Excluded(PrefixOrKey::Prefix(prefix)) => prefix.end_bound(),
-            Bound::Included(PrefixOrKey::Key(key)) => {
-                Bound::Included(key.encode().as_ref().to_vec())
-            }
-            Bound::Excluded(PrefixOrKey::Key(key)) => {
-                Bound::Excluded(key.encode().as_ref().to_vec())
-            }
+pub struct PrefixEncoder {}
+
+impl<K: Key> BoundsEncoder<K> for PrefixEncoder {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound {
+        match bound {
+            Bound::Included(k) => Bound::Included(k.encode().as_ref().to_vec()),
+            Bound::Excluded(k) => prefix_end(k.encode().as_ref().to_vec()),
             Bound::Unbounded => Bound::Unbounded,
         }
     }
 
-    fn end_bound(&self) -> Bound<Vec<u8>> {
-        match self {
-            Bound::Included(PrefixOrKey::Prefix(prefix)) => prefix.end_bound(),
-            Bound::Excluded(PrefixOrKey::Prefix(prefix)) => match prefix.start_bound() {
-                Bound::Included(bytes) | Bound::Excluded(bytes) => Bound::Excluded(bytes),
-                Bound::Unbounded => Bound::Unbounded,
-            },
-            Bound::Included(PrefixOrKey::Key(key)) => {
-                Bound::Included(key.encode().as_ref().to_vec())
-            }
-            Bound::Excluded(PrefixOrKey::Key(key)) => {
-                Bound::Excluded(key.encode().as_ref().to_vec())
-            }
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound {
+        match bound {
+            Bound::Included(k) => prefix_end(k.encode().as_ref().to_vec()),
+            Bound::Excluded(k) => Bound::Excluded(k.encode().as_ref().to_vec()),
             Bound::Unbounded => Bound::Unbounded,
         }
     }
@@ -68,83 +96,104 @@ impl<K: Key + Prefixable<P>, P: Prefix> IntoScanBounds for Bound<PrefixOrKey<K, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prefix::encoded_prefix_range;
 
-    #[test]
-    fn prefix_bounds_convert_to_scan_bounds() {
-        let prefix = 2u32;
-        let encoded = prefix.encode_prefix();
-        let range = encoded_prefix_range(encoded.clone());
-        let cases = vec![
-            (
-                "included prefix starts at prefix and ends after prefix",
-                Bound::Included(prefix),
-                range.0.clone(),
-                range.1.clone(),
-            ),
-            (
-                "excluded prefix starts after prefix and ends before prefix",
-                Bound::Excluded(prefix),
-                range.1,
-                Bound::Excluded(encoded),
-            ),
-            (
-                "unbounded prefix remains unbounded",
-                Bound::Unbounded,
-                Bound::Unbounded,
-                Bound::Unbounded,
-            ),
-        ];
-
-        for (name, bound, expected_start, expected_end) in cases {
-            assert_eq!(bound.start_bound(), expected_start, "{name}");
-            assert_eq!(bound.end_bound(), expected_end, "{name}");
-        }
+    fn encode(key: impl Key) -> Vec<u8> {
+        key.encode().as_ref().to_vec()
     }
 
     #[test]
-    fn prefix_or_key_bounds_convert_to_scan_bounds() {
-        let prefix = 2u32;
-        let encoded_prefix = prefix.encode_prefix();
-        let prefix_range = encoded_prefix_range(encoded_prefix.clone());
-        let key = (2u32, 20u32);
-        let encoded_key = key.encode().as_ref().to_vec();
-        let cases = vec![
-            (
-                "included prefix starts at prefix and ends after prefix",
-                Bound::Included(PrefixOrKey::Prefix(prefix)),
-                prefix_range.0.clone(),
-                prefix_range.1.clone(),
-            ),
-            (
-                "excluded prefix starts after prefix and ends before prefix",
-                Bound::Excluded(PrefixOrKey::Prefix(prefix)),
-                prefix_range.1,
-                Bound::Excluded(encoded_prefix),
-            ),
-            (
-                "included key uses exact included key bounds",
-                Bound::Included(PrefixOrKey::Key(key)),
-                Bound::Included(encoded_key.clone()),
-                Bound::Included(encoded_key.clone()),
-            ),
-            (
-                "excluded key uses exact excluded key bounds",
-                Bound::Excluded(PrefixOrKey::Key(key)),
-                Bound::Excluded(encoded_key.clone()),
-                Bound::Excluded(encoded_key),
-            ),
-            (
-                "unbounded prefix or key remains unbounded",
-                Bound::Unbounded,
-                Bound::Unbounded,
-                Bound::Unbounded,
-            ),
-        ];
+    fn exact_encoder_preserves_bound_inclusivity() {
+        let bounds = ExactEncoder::encode_range((
+            Bound::Included((1u32, 10u16)),
+            Bound::Excluded((2u32, 20u16)),
+        ));
 
-        for (name, bound, expected_start, expected_end) in cases {
-            assert_eq!(bound.start_bound(), expected_start, "{name}");
-            assert_eq!(bound.end_bound(), expected_end, "{name}");
-        }
+        assert_eq!(
+            bounds,
+            (
+                Bound::Included(encode((1u32, 10u16))),
+                Bound::Excluded(encode((2u32, 20u16))),
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_encoder_excludes_start_logical_key_group() {
+        let bounds =
+            PrefixEncoder::encode_range((Bound::Excluded((1u32, 10u16)), Bound::Unbounded));
+
+        assert_eq!(
+            bounds,
+            (prefix_end(encode((1u32, 10u16))), Bound::Unbounded)
+        );
+    }
+
+    #[test]
+    fn prefix_encoder_includes_end_logical_key_group() {
+        let bounds = PrefixEncoder::encode_range(..=(1u32, 10u16));
+
+        assert_eq!(
+            bounds,
+            (Bound::Unbounded, prefix_end(encode((1u32, 10u16))))
+        );
+    }
+
+    #[test]
+    fn exact_prefixed_range_composes_single_prefix_and_suffix_bounds() {
+        let range = <ExactEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(
+            7u32,
+            (Bound::Excluded(10u16), Bound::Included(20u16)),
+        );
+
+        assert_eq!(
+            range,
+            (
+                Bound::Excluded(encode((7u32, 10u16))),
+                Bound::Included(encode((7u32, 20u16)))
+            )
+        );
+    }
+
+    #[test]
+    fn exact_prefixed_range_clamps_unbounded_suffix_bounds() {
+        let range = <ExactEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(7u32, ..);
+
+        assert_eq!(
+            range,
+            (
+                Bound::Included(encode(7u32)),
+                crate::prefix::prefix_end(encode(7u32))
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_prefixed_range_includes_end_logical_key_group() {
+        let range =
+            <PrefixEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(7u32, ..=20u16);
+
+        assert_eq!(
+            range,
+            (
+                Bound::Included(encode(7u32)),
+                prefix_end(encode((7u32, 20u16)))
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_prefixed_range_excludes_start_logical_key_group() {
+        let range = <PrefixEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(
+            7u32,
+            (Bound::Excluded(10u16), Bound::Unbounded),
+        );
+
+        assert_eq!(
+            range,
+            (
+                prefix_end(encode((7u32, 10u16))),
+                crate::prefix::prefix_end(encode(7u32))
+            )
+        );
     }
 }

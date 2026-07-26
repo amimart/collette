@@ -6,8 +6,10 @@ use collette::impl_enum_key;
 use collette::index::{Index, Multi, Unique};
 use collette::index_registry::{Cons, Nil};
 use collette::item::Item;
-use collette::scan::{Direction, IndexScan, PrefixScan};
-use collette::store::{MultiStore, MultiStoreReadHandle};
+use collette::iter::IndexEntry;
+use collette::key::Key;
+use collette::scan::{Direction, PrefixableScan, Scan, ScanExecutor};
+use collette::store::MultiStore;
 
 pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     single_value_primary_key_behaviour(&make_db);
@@ -23,6 +25,8 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     unique_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     multi_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
+    prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
+    multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
 }
 
 #[macro_export]
@@ -93,6 +97,16 @@ macro_rules! collection_contract_tests {
             $crate::common::scans_filter_lexicographically_with_ranges_directions_and_cursors(
                 &$make_db,
             );
+        }
+
+        #[test]
+        fn prefixed_ranges_are_clamped_to_the_selected_prefix() {
+            $crate::common::prefixed_ranges_are_clamped_to_the_selected_prefix(&$make_db);
+        }
+
+        #[test]
+        fn multi_index_ranges_apply_bounds_to_logical_keys() {
+            $crate::common::multi_index_ranges_apply_bounds_to_logical_keys(&$make_db);
         }
     };
 }
@@ -289,24 +303,27 @@ pub fn multi_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore>
     let users = seeded_user_collection("multi_indexes_handle_and_scan", make_db());
 
     assert_eq!(
-        scan_handles(users.scan(ByStatus).unwrap().prefix(AccountStatus::Active)),
-        vec!["ada", "grace", "margaret"]
+        scan_handles(users.scan(ByStatus).unwrap()),
+        vec!["yukihiro", "ada", "grace", "margaret", "linus", "dennis"]
     );
     assert_eq!(
         scan_handles(
             users
                 .scan(ByRegionStatus)
                 .unwrap()
-                .prefix((Region::Europe, AccountStatus::Active))
+                .prefix(Region::Europe)
+                .range(AccountStatus::Active..AccountStatus::Suspended)
         ),
         vec!["ada", "grace"]
     );
     assert_eq!(
-        scan_handles(users.scan(ByTeamStatusSeat).unwrap().prefix((
-            "core",
-            AccountStatus::Active,
-            1u16
-        ))),
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix(("core", AccountStatus::Active))
+                .range(1u16..2u16)
+        ),
         vec!["ada"]
     );
 }
@@ -332,29 +349,12 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     );
     assert_eq!(
         scan_handles(
-            users.scan(ByTeamStatusSeat).unwrap().prefix_range(
-                std::ops::Bound::Included("core")..std::ops::Bound::Included("kernel")
-            )
-        ),
-        vec!["ada", "grace", "linus"]
-    );
-    assert_eq!(
-        scan_handles(
             users
                 .scan(ByTeamStatusSeat)
                 .unwrap()
-                .prefix_range(
-                    std::ops::Bound::Included("core")..std::ops::Bound::Included("kernel")
-                )
-                .direction(Direction::RightToLeft)
+                .prefix("core")
+                .range((AccountStatus::Active, 1u16)..(AccountStatus::Suspended, 1u16))
         ),
-        vec!["linus", "grace", "ada"]
-    );
-    assert_eq!(
-        scan_handles(users.scan(ByTeamStatusSeat).unwrap().range(
-            std::ops::Bound::Included(("core", AccountStatus::Active, 1u16, &100u64))
-                ..std::ops::Bound::Included(("core", AccountStatus::Active, 2u16, &101u64))
-        )),
         vec!["ada", "grace"]
     );
     assert_eq!(
@@ -362,21 +362,41 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
             users
                 .scan(ByTeamStatusSeat)
                 .unwrap()
-                .range(
-                    std::ops::Bound::Included(("core", AccountStatus::Active, 1u16, &100u64))
-                        ..std::ops::Bound::Included(("core", AccountStatus::Active, 2u16, &101u64))
-                )
+                .prefix("core")
+                .range((AccountStatus::Active, 1u16)..(AccountStatus::Suspended, 1u16))
                 .direction(Direction::RightToLeft)
         ),
         vec!["grace", "ada"]
     );
     assert_eq!(
-        scan_handles(users.scan(ByTeamStatusSeat).unwrap().prefix("core").after((
-            "core",
-            AccountStatus::Active,
-            1u16,
-            &100u64
-        ))),
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix(("core", AccountStatus::Active))
+                .range(1u16..3u16)
+        ),
+        vec!["ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix(("core", AccountStatus::Active))
+                .range(1u16..3u16)
+                .direction(Direction::RightToLeft)
+        ),
+        vec!["grace", "ada"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix("core")
+                .after(encode(("core", AccountStatus::Active, 1u16, &100u64)))
+        ),
         vec!["grace"]
     );
     assert_eq!(
@@ -386,7 +406,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
                 .unwrap()
                 .prefix("core")
                 .direction(Direction::RightToLeft)
-                .after(("core", AccountStatus::Active, 2u16, &101u64))
+                .after(encode(("core", AccountStatus::Active, 2u16, &101u64)))
         ),
         vec!["ada"]
     );
@@ -395,10 +415,101 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
             .scan(ByTeamStatusSeat)
             .unwrap()
             .prefix("core")
-            .after(("kernel", AccountStatus::Suspended, 1u16, &102u64))
+            .after(encode(("kernel", AccountStatus::Suspended, 1u16, &102u64)))
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
+}
+
+pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
+    make_db: &impl Fn() -> DB,
+) {
+    let users = seeded_user_collection("prefixed_ranges_are_clamped", make_db());
+
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(AccountStatus::Active..)
+        ),
+        vec!["ada", "grace", "linus"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..AccountStatus::Suspended)
+        ),
+        vec!["ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..)
+        ),
+        vec!["ada", "grace", "linus"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix(("core", AccountStatus::Active))
+                .range(2u16..)
+        ),
+        vec!["grace"]
+    );
+}
+
+pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("multi_index_logical_range_bounds", make_db());
+
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .range(..=(Region::Europe, AccountStatus::Active))
+        ),
+        vec!["margaret", "dennis", "ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(users.scan(ByRegionStatus).unwrap().range((
+            std::ops::Bound::Excluded((Region::Europe, AccountStatus::Active)),
+            std::ops::Bound::Unbounded,
+        ))),
+        vec!["linus", "yukihiro"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range(..=AccountStatus::Active)
+        ),
+        vec!["ada", "grace"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .range((
+                    std::ops::Bound::Excluded(AccountStatus::Active),
+                    std::ops::Bound::Unbounded,
+                ))
+        ),
+        vec!["linus"]
+    );
 }
 
 pub type UserCollection<DB> = Collection<
@@ -744,16 +855,19 @@ fn sample_users() -> Vec<User> {
     ]
 }
 
-fn scan_handles<'a, ReadHandle, Idx>(scan: IndexScan<'a, ReadHandle, User, Idx>) -> Vec<String>
+fn scan_handles<S>(scan: S) -> Vec<String>
 where
-    ReadHandle: MultiStoreReadHandle,
-    Idx: Index<User>,
-    for<'b> Idx::Kind<'b>: collette::index::IndexKind<Idx::Key<'b>, <User as Item>::Key<'b>>,
+    S: Scan,
+    <S::Executor as ScanExecutor>::Iter: Iterator<Item = Result<IndexEntry<User>, Error>>,
 {
     scan.iter()
         .unwrap()
         .map(|entry| entry.unwrap().record.handle)
         .collect()
+}
+
+fn encode(key: impl Key) -> Vec<u8> {
+    key.encode().as_ref().to_vec()
 }
 
 fn sample_ada() -> User {

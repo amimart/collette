@@ -1,3 +1,4 @@
+use crate::bounds::{BoundsEncoder, ExactEncoder, PrefixEncoder};
 use crate::error::Error;
 use crate::item::Item;
 use crate::key::{AppendKey, Key};
@@ -198,6 +199,8 @@ where
         IndexKey: 'a,
         PrimaryKey: 'b;
 
+    type BoundsEncoder: BoundsEncoder<IndexKey>;
+
     /// Builds the physical key used in the index store.
     fn store_key<'a, 'b>(k: IndexKey, pk: &'b PrimaryKey) -> Self::StoreKey<'a, 'b>
     where
@@ -219,6 +222,8 @@ where
     where
         IndexKey: 'a,
         PrimaryKey: 'b;
+
+    type BoundsEncoder = ExactEncoder;
 
     fn store_key<'a, 'b>(k: IndexKey, _pk: &'b PrimaryKey) -> Self::StoreKey<'a, 'b>
     where
@@ -244,6 +249,8 @@ where
     where
         IndexKey: 'a,
         PrimaryKey: 'b;
+
+    type BoundsEncoder = PrefixEncoder;
 
     fn store_key<'a, 'b>(k: IndexKey, pk: &'b PrimaryKey) -> Self::StoreKey<'a, 'b>
     where
