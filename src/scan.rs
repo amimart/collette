@@ -383,6 +383,39 @@ where
     }
 }
 
+pub struct CollectionScan<'a, ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    executor: CollectionScanExecutor<ReadHandle, Record>,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, ReadHandle, Record> Scan for CollectionScan<'a, ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    type Key<'b> = Record::Key<'b>
+    where
+        Self: 'b;
+
+    type Executor = CollectionScanExecutor<ReadHandle, Record>;
+
+    type BoundsEncoder<'c> = ExactEncoder
+    where
+        Self: 'c;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        Ok(CompiledScan {
+            executor: self.executor,
+            range: (Bound::Unbounded, Bound::Unbounded),
+            direction: Direction::LeftToRight,
+        })
+    }
+}
 /// Adds typed prefix support to a scan.
 ///
 /// A prefix is a leftmost part of the scan key. For an index key
