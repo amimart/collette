@@ -57,7 +57,6 @@ where
 /// You normally do not implement this trait yourself unless you provide a
 /// custom composite key type. Application code usually relies on the tuple
 /// implementations provided by Collette.
-/// ```
 pub trait Prefixable<P>
 where
     P: Prefix,

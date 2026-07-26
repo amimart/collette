@@ -1,15 +1,36 @@
-//! Typed scan builders for secondary indexes.
+//! Typed scan builders for collections and secondary indexes.
 //!
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`Scan::iter`] opens the backend stores and returns an iterator.
 //!
-//! A scan starts from [`Collection::scan`](crate::Collection::scan), then can be
-//! refined with range, prefix, direction, and cursor steps:
+//! Use [`Collection::scan`](crate::Collection::scan) to scan records by primary
+//! key, or [`Collection::index_scan`](crate::Collection::index_scan) to scan a
+//! registered secondary index. Both scan kinds can be refined with range,
+//! direction, and cursor steps; index scans can also use typed prefixes.
+//!
+//! # Collection scans
+//!
+//! ```rust,ignore
+//! use collette::{Direction, Key, Scan};
+//!
+//! let page = collection.scan()?
+//!     .range(first_id..last_id)
+//!     .direction(Direction::LeftToRight)
+//!     .iter()?;
+//!
+//! let cursor = last_seen_id.encode().as_ref().to_vec();
+//!
+//! let next_page = collection.scan()?
+//!     .after(cursor)
+//!     .iter()?;
+//! ```
+//!
+//! # Index scans
 //!
 //! ```rust,ignore
 //! use collette::{Direction, Key, PrefixableScan, Scan};
 //!
-//! let users = collection.scan(ByStatusAndCreatedAt)?
+//! let users = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
 //!     .range(created_from..created_to)
 //!     .direction(Direction::LeftToRight);
@@ -21,17 +42,17 @@
 //!     .as_ref()
 //!     .to_vec();
 //!
-//! let next_page = collection.scan(ByStatusAndCreatedAt)?
+//! let next_page = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
 //!     .after(cursor)
 //!     .iter()?;
 //! ```
 
-use crate::bounds::{BoundsEncoder, ScanBound, ScanRange};
+use crate::bounds::{BoundsEncoder, ExactEncoder, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::item::Item;
-use crate::iter::IndexIterator;
+use crate::iter::{CollectionIterator, IndexIterator};
 use crate::key::Key;
 use crate::prefix::{Prefix, Prefixable};
 use crate::store::{MultiStoreReadHandle, ReadKVStore};
@@ -54,7 +75,7 @@ pub enum Direction {
 /// iterator for the backend.
 ///
 /// Application code usually does not implement or call this trait directly.
-/// Collection scans use Collette's index executor internally.
+/// Collection and index scans use Collette's executors internally.
 pub trait ScanExecutor: Sized {
     /// Iterator produced by this executor.
     type Iter;
@@ -97,7 +118,7 @@ impl<E: ScanExecutor> CompiledScan<E> {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// let compiled = users.index_scan(ByEmail)?.compile()?;
     /// let iter = compiled.iter()?;
     /// ```
     pub fn iter(self) -> Result<E::Iter, Error> {
@@ -110,7 +131,7 @@ impl<E: ScanExecutor> CompiledScan<E> {
 ///
 /// It opens the index store, applies the compiled bounds, and opens the primary
 /// collection store used by [`IndexIterator`] to load records.
-pub struct IndexExecutor<ReadHandle, Record, Idx>
+pub struct IndexScanExecutor<ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -123,7 +144,7 @@ where
     _marker: PhantomData<(Record, Idx)>,
 }
 
-impl<ReadHandle, Record, Idx> ScanExecutor for IndexExecutor<ReadHandle, Record, Idx>
+impl<ReadHandle, Record, Idx> ScanExecutor for IndexScanExecutor<ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -151,6 +172,45 @@ where
     }
 }
 
+/// Executor used by primary collection scans.
+///
+/// It opens the collection's primary store, applies the compiled bounds, and
+/// gives the resulting backend iterator to [`CollectionIterator`] to decode
+/// records.
+pub struct CollectionScanExecutor<ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    collection_name: &'static str,
+    read_handle: ReadHandle,
+
+    _marker: PhantomData<Record>,
+}
+
+impl<ReadHandle, Record> ScanExecutor for CollectionScanExecutor<ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    type Iter = CollectionIterator<ReadHandle::Store, Record>;
+
+    fn open(
+        self,
+        start: ScanBound,
+        end: ScanBound,
+        direction: Direction,
+    ) -> Result<Self::Iter, Error> {
+        Ok(CollectionIterator::new(
+            self.read_handle
+                .open_store(self.collection_name)
+                .map_err(Error::backend)?
+                .scan((start, end), direction)
+                .map_err(Error::backend)?,
+        ))
+    }
+}
+
 /// Shared contract implemented by every scan builder in the chain.
 ///
 /// The trait keeps scan builders composable: each builder can compile itself
@@ -161,15 +221,20 @@ where
 /// ```rust,ignore
 /// use collette::{Direction, Scan};
 ///
-/// let iter = users.scan(ByEmail)?
+/// let iter = users.scan()?
 ///     .direction(Direction::LeftToRight)
 ///     .iter()?;
 /// ```
 pub trait Scan: Sized {
-    /// Logical index key accepted by range builders.
+    /// Logical key accepted by range builders.
+    ///
+    /// For collection scans this is the record's primary key. For index scans
+    /// this is the logical index key, before any backend-specific physical key
+    /// expansion.
     type Key<'a>: Key
     where
         Self: 'a;
+
     /// Executor used when the scan is opened.
     type Executor: ScanExecutor;
 
@@ -182,7 +247,7 @@ pub trait Scan: Sized {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// let compiled = users.scan()?.compile()?;
     /// ```
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error>;
 
@@ -193,7 +258,7 @@ pub trait Scan: Sized {
     /// ```rust,ignore
     /// use collette::Scan;
     ///
-    /// let iter = users.scan(ByEmail)?.iter()?;
+    /// let iter = users.scan()?.iter()?;
     /// ```
     fn iter(self) -> Result<<Self::Executor as ScanExecutor>::Iter, Error> {
         self.compile()?.iter()
@@ -203,20 +268,20 @@ pub trait Scan: Sized {
 /// Initial builder for a full index scan.
 ///
 /// A full scan has no bounds and scans left-to-right by default. Use
-/// [`Collection::scan`](crate::Collection::scan) to create this builder.
-pub struct IndexFullScan<'a, ReadHandle, Record, Idx>
+/// [`Collection::index_scan`](crate::Collection::index_scan) to create this builder.
+pub struct IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
     Idx: Index<Record>,
     for<'b> Idx::Kind<'b>: IndexKind<Idx::Key<'b>, Record::Key<'b>>,
 {
-    executor: IndexExecutor<ReadHandle, Record, Idx>,
+    executor: IndexScanExecutor<ReadHandle, Record, Idx>,
 
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, ReadHandle, Record, Idx> Scan for IndexFullScan<'a, ReadHandle, Record, Idx>
+impl<'a, ReadHandle, Record, Idx> Scan for IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -227,7 +292,9 @@ where
         = Idx::Key<'b>
     where
         Self: 'b;
-    type Executor = IndexExecutor<ReadHandle, Record, Idx>;
+
+    type Executor = IndexScanExecutor<ReadHandle, Record, Idx>;
+
     type BoundsEncoder<'b>
         = <Idx::Kind<'b> as IndexKind<Idx::Key<'b>, Record::Key<'b>>>::BoundsEncoder
     where
@@ -242,7 +309,7 @@ where
     }
 }
 
-impl<'a, ReadHandle, Record, Idx> IndexFullScan<'a, ReadHandle, Record, Idx>
+impl<'a, ReadHandle, Record, Idx> IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: Scan,
     ReadHandle: MultiStoreReadHandle,
@@ -252,17 +319,17 @@ where
 {
     /// Creates a full index scan from a read handle and collection store name.
     ///
-    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::scan).
+    /// This constructor is primarily used by [`Collection::index_scan`](crate::Collection::index_scan).
     /// Application code should generally start scans from the collection.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let scan = users.scan(ByEmail)?;
+    /// let scan = users.index_scan(ByEmail)?;
     /// ```
     pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
         Self {
-            executor: IndexExecutor {
+            executor: IndexScanExecutor {
                 collection_name,
                 read_handle,
                 _marker: Default::default(),
@@ -280,7 +347,7 @@ where
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let active_recent = users.scan(ByStatusAndCreatedAt)?
+    /// let active_recent = users.index_scan(ByStatusAndCreatedAt)?
     ///     .range((Status::Active, from)..(Status::Active, to))
     ///     .iter()?;
     /// ```
@@ -304,7 +371,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, Scan};
     ///
-    /// let newest_first = users.scan(ByCreatedAt)?
+    /// let newest_first = users.index_scan(ByCreatedAt)?
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
     /// ```
@@ -332,7 +399,144 @@ where
     ///     .as_ref()
     ///     .to_vec();
     ///
-    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
+    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+        AfterScan {
+            cursor,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+}
+
+/// Initial builder for a full primary collection scan.
+///
+/// A collection scan reads records directly from the collection's primary
+/// store, ordered by [`Item::Key`]. It scans left-to-right without bounds by
+/// default. Use [`Collection::scan`](crate::Collection::scan) to create this
+/// builder.
+pub struct CollectionScan<'a, ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    executor: CollectionScanExecutor<ReadHandle, Record>,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a, ReadHandle, Record> Scan for CollectionScan<'a, ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    type Key<'b>
+        = Record::Key<'b>
+    where
+        Self: 'b;
+
+    type Executor = CollectionScanExecutor<ReadHandle, Record>;
+
+    type BoundsEncoder<'c>
+        = ExactEncoder
+    where
+        Self: 'c;
+
+    fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
+        Ok(CompiledScan {
+            executor: self.executor,
+            range: (Bound::Unbounded, Bound::Unbounded),
+            direction: Direction::LeftToRight,
+        })
+    }
+}
+
+impl<'a, ReadHandle, Record> CollectionScan<'a, ReadHandle, Record>
+where
+    Self: Scan,
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    /// Creates a full collection scan from a read handle and collection store name.
+    ///
+    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::scan).
+    /// Application code should generally start scans from the collection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let scan = users.scan()?;
+    /// ```
+    pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
+        Self {
+            executor: CollectionScanExecutor {
+                collection_name,
+                read_handle,
+                _marker: Default::default(),
+            },
+            _marker: Default::default(),
+        }
+    }
+
+    /// Restricts the scan to a range over the primary key.
+    ///
+    /// The bounds are encoded with exact primary-key semantics. Unlike a
+    /// `Multi` index scan, there is no appended key segment to account for.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let active_recent = users.scan()?
+    ///     .range(user_id_from..user_id_to)
+    ///     .iter()?;
+    /// ```
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self>
+    where
+        R: RangeBounds<<Self as Scan>::Key<'a>>,
+    {
+        RangeScan {
+            range: <<Self as Scan>::BoundsEncoder<'a> as BoundsEncoder<
+                <Self as Scan>::Key<'a>,
+            >>::encode_range(range),
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    /// Sets the scan direction.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, Scan};
+    ///
+    /// let newest_first = users.scan()?
+    ///     .direction(Direction::RightToLeft)
+    ///     .iter()?;
+    /// ```
+    pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
+        DirectedScan {
+            direction,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    /// Starts the scan after an encoded cursor key.
+    ///
+    /// The cursor must be encoded with the same layout as the primary key.
+    /// For example, a `u64` primary key cursor can be built with
+    /// `last_seen_id.encode().as_ref().to_vec()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Key, Scan};
+    ///
+    /// let next_page = users.scan()?
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
@@ -356,7 +560,7 @@ where
 /// ```rust,ignore
 /// use collette::{PrefixableScan, Scan};
 ///
-/// let active = users.scan(ByStatusAndCreatedAt)?
+/// let active = users.index_scan(ByStatusAndCreatedAt)?
 ///     .prefix(Status::Active)
 ///     .iter()?;
 /// ```
@@ -372,7 +576,7 @@ where
     /// ```rust,ignore
     /// use collette::{PrefixableScan, Scan};
     ///
-    /// let active = users.scan(ByStatusAndCreatedAt)?
+    /// let active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .iter()?;
     /// ```
@@ -380,7 +584,7 @@ where
 }
 
 impl<'a, ReadHandle, Record, Idx, P> PrefixableScan<'a, <Self as Scan>::Key<'a>, P>
-    for IndexFullScan<'a, ReadHandle, Record, Idx>
+    for IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: Scan,
     <Self as Scan>::Key<'a>: Key + Prefixable<P>,
@@ -457,7 +661,7 @@ where
     /// ```rust,ignore
     /// use collette::{PrefixableScan, Scan};
     ///
-    /// let recently_active = users.scan(ByStatusAndCreatedAt)?
+    /// let recently_active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .range(created_from..created_to)
     ///     .iter()?;
@@ -483,7 +687,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, PrefixableScan, Scan};
     ///
-    /// let newest_active = users.scan(ByStatusAndCreatedAt)?
+    /// let newest_active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
@@ -510,7 +714,7 @@ where
     ///     .as_ref()
     ///     .to_vec();
     ///
-    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .after(cursor)
     ///     .iter()?;
@@ -526,7 +730,7 @@ where
 
 /// Scan builder restricted to a typed key range.
 ///
-/// Returned by [`IndexFullScan::range`] or [`PrefixedScan::range`].
+/// Returned by [`IndexScan::range`] or [`PrefixedScan::range`].
 pub struct RangeScan<'a, S>
 where
     S: Scan + 'a,
@@ -569,7 +773,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, Scan};
     ///
-    /// let descending = users.scan(ByCreatedAt)?
+    /// let descending = users.index_scan(ByCreatedAt)?
     ///     .range(from..to)
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
@@ -593,7 +797,7 @@ where
     ///
     /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
     ///
-    /// let next_page = users.scan(ByCreatedAt)?
+    /// let next_page = users.index_scan(ByCreatedAt)?
     ///     .range(from..to)
     ///     .after(cursor)
     ///     .iter()?;
@@ -655,7 +859,7 @@ where
     ///
     /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
     ///
-    /// let previous_page = users.scan(ByCreatedAt)?
+    /// let previous_page = users.index_scan(ByCreatedAt)?
     ///     .direction(Direction::RightToLeft)
     ///     .after(cursor)
     ///     .iter()?;
@@ -987,16 +1191,110 @@ mod tests {
         );
     }
 
+    #[test]
+    fn collection_scan_opens_unbounded_left_to_right() {
+        assert_collection_scan(
+            |scan| scan,
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_range_encodes_primary_key_bounds() {
+        assert_collection_scan(
+            |scan| scan.range(10u32..20u32),
+            Ok(scan_log(
+                Bound::Included(encode_primary_key(10)),
+                Bound::Excluded(encode_primary_key(20)),
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_direction_overrides_iteration_direction() {
+        assert_collection_scan(
+            |scan| scan.direction(Direction::RightToLeft),
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Unbounded,
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_after_tightens_left_bound() {
+        assert_collection_scan(
+            |scan| scan.after(encode_primary_key(10)),
+            Ok(scan_log(
+                Bound::Excluded(encode_primary_key(10)),
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_right_to_left_after_tightens_right_bound() {
+        assert_collection_scan(
+            |scan| {
+                scan.direction(Direction::RightToLeft)
+                    .after(encode_primary_key(10))
+            },
+            Ok(scan_log(
+                Bound::Unbounded,
+                Bound::Excluded(encode_primary_key(10)),
+                Direction::RightToLeft,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_cursor_outside_bounds_fails_before_opening_stores() {
+        assert_collection_scan(
+            |scan| scan.range(10u32..20u32).after(encode_primary_key(30)),
+            Err(ErrorKind::CursorOutOfBounds),
+        );
+    }
+
     fn assert_scan<S>(
-        build: impl FnOnce(IndexFullScan<'static, MockReadHandle, Record, ByNumber>) -> S,
+        build: impl FnOnce(IndexScan<'static, MockReadHandle, Record, ByNumber>) -> S,
         expected: Result<ScanLog, ErrorKind>,
     ) where
-        S: Scan<Executor = IndexExecutor<MockReadHandle, Record, ByNumber>>,
+        S: Scan<Executor = IndexScanExecutor<MockReadHandle, Record, ByNumber>>,
     {
         let db = MockDb::new();
         let log = db.log();
         let read = db.read("records").unwrap();
-        let scan = build(IndexFullScan::<_, Record, ByNumber>::new(read, "records"));
+        let scan = build(IndexScan::<_, Record, ByNumber>::new(read, "records"));
+
+        match expected {
+            Ok(expected) => {
+                scan.iter().unwrap();
+                assert_eq!(log.borrow().scans, vec![expected]);
+            }
+            Err(ErrorKind::CursorOutOfBounds) => {
+                assert!(matches!(scan.iter(), Err(Error::CursorOutOfBounds)));
+                assert!(log.borrow().scans.is_empty());
+            }
+        }
+    }
+
+    fn assert_collection_scan<S>(
+        build: impl FnOnce(CollectionScan<'static, MockReadHandle, Record>) -> S,
+        expected: Result<ScanLog, ErrorKind>,
+    ) where
+        S: Scan<Executor = CollectionScanExecutor<MockReadHandle, Record>>,
+    {
+        let db = MockDb::new();
+        let log = db.log();
+        let read = db.read("records").unwrap();
+        let scan = build(CollectionScan::<_, Record>::new(read, "records"));
 
         match expected {
             Ok(expected) => {
@@ -1025,6 +1323,10 @@ mod tests {
 
     fn encode_prefix(group: u32) -> Vec<u8> {
         group.encode().as_ref().to_vec()
+    }
+
+    fn encode_primary_key(id: u32) -> Vec<u8> {
+        id.encode().as_ref().to_vec()
     }
 
     fn encode_index_key(group: u32, number: u32) -> Vec<u8> {

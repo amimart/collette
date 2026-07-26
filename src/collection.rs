@@ -3,7 +3,7 @@ use crate::index::{Index, IndexKind};
 use crate::index_registry::{Cons, ContainsIndex, IndexRegistry, Nil};
 use crate::item::Item;
 use crate::key::Key;
-use crate::scan::IndexFullScan;
+use crate::scan::{CollectionScan, IndexScan};
 use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
 };
@@ -271,22 +271,80 @@ where
     /// #     .with_index::<ByEmail>()
     /// #     .build();
     /// let iter = users
-    ///     .scan(ByEmail)?
+    ///     .index_scan(ByEmail)?
     ///     .direction(collette::Direction::LeftToRight)
     ///     .iter()?;
     /// # Ok::<(), collette::Error>(())
     /// ```
-    pub fn scan<'a, Idx, P>(
+    pub fn index_scan<'a, Idx, P>(
         &self,
         _idx: Idx,
-    ) -> Result<IndexFullScan<'a, DB::ReadHandle, Record, Idx>, Error>
+    ) -> Result<IndexScan<'a, DB::ReadHandle, Record, Idx>, Error>
     where
         Record: 'a,
         Idx: Index<Record>,
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexFullScan::new(
+        Ok(IndexScan::new(
+            self.db.read(self.name).map_err(Error::backend)?,
+            Self::MAIN_STORE,
+        ))
+    }
+
+    /// Creates a typed scan over this collection's primary store.
+    ///
+    /// Collection scans iterate records ordered by their primary [`Item::Key`].
+    /// Use [`range`](crate::scan::CollectionScan::range) to restrict the scan to
+    /// primary-key bounds, [`direction`](crate::scan::CollectionScan::direction)
+    /// to reverse iteration, and [`after`](crate::scan::CollectionScan::after)
+    /// to resume after an encoded cursor.
+    ///
+    /// For scans over secondary indexes, use [`index_scan`](Self::index_scan)
+    /// instead.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use collette::backend::memory::InMemoryMultiStore;
+    /// # use collette::{collection, Item, Scan};
+    /// #
+    /// # #[derive(Clone)]
+    /// # struct User {
+    /// #     id: u64,
+    /// #     email: String,
+    /// # }
+    /// #
+    /// # impl Item for User {
+    /// #     type Key<'a> = u64;
+    /// #     type Error = std::convert::Infallible;
+    /// #
+    /// #     fn key(&self) -> Self::Key<'_> {
+    /// #         self.id
+    /// #     }
+    /// #
+    /// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+    /// #         Ok(self.email.as_bytes().to_vec())
+    /// #     }
+    /// #
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+    /// #         Ok(Self {
+    /// #             id: 0,
+    /// #             email: String::from_utf8_lossy(bytes).into_owned(),
+    /// #         })
+    /// #     }
+    /// # }
+    /// #
+    /// # let db = InMemoryMultiStore::new();
+    /// # let users = collection::<User, _>("users", db).build();
+    /// let iter = users
+    ///     .scan()?
+    ///     .range(100u64..200u64)
+    ///     .iter()?;
+    /// # Ok::<(), collette::Error>(())
+    /// ```
+    pub fn scan<'a>(&self) -> Result<CollectionScan<'a, DB::ReadHandle, Record>, Error> {
+        Ok(CollectionScan::new(
             self.db.read(self.name).map_err(Error::backend)?,
             Self::MAIN_STORE,
         ))
@@ -296,7 +354,7 @@ where
 /// Builder used to register the indexes available on a [`Collection`].
 ///
 /// Each call to [`with_index`](Self::with_index) adds the index type to the
-/// collection's type-level registry, allowing [`Collection::scan`] to reject
+/// collection's type-level registry, allowing [`Collection::index_scan`] to reject
 /// unregistered indexes at compile time. Calling [`build`](Self::build)
 /// prepares the backend stores required by the collection.
 pub struct CollectionBuilder<DB, Record, Indexes>

@@ -27,6 +27,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
     multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
+    collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(&make_db);
 }
 
 #[macro_export]
@@ -107,6 +108,13 @@ macro_rules! collection_contract_tests {
         #[test]
         fn multi_index_ranges_apply_bounds_to_logical_keys() {
             $crate::common::multi_index_ranges_apply_bounds_to_logical_keys(&$make_db);
+        }
+
+        #[test]
+        fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors() {
+            $crate::common::collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(
+                &$make_db,
+            );
         }
     };
 }
@@ -259,13 +267,13 @@ pub fn unique_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore
     let users = seeded_user_collection("unique_indexes_handle_and_scan", make_db());
 
     assert_eq!(
-        scan_handles(users.scan(UniqueEmail).unwrap()),
+        scan_handles(users.index_scan(UniqueEmail).unwrap()),
         vec!["ada", "dennis", "grace", "linus", "margaret", "yukihiro"]
     );
     assert_eq!(
         scan_handles(
             users
-                .scan(UniqueRegionHandle)
+                .index_scan(UniqueRegionHandle)
                 .unwrap()
                 .prefix(Region::Europe)
         ),
@@ -274,7 +282,7 @@ pub fn unique_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore
     assert_eq!(
         scan_handles(
             users
-                .scan(UniqueRegionPlanHandle)
+                .index_scan(UniqueRegionPlanHandle)
                 .unwrap()
                 .prefix((Region::Europe, Plan::Team))
         ),
@@ -303,13 +311,13 @@ pub fn multi_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore>
     let users = seeded_user_collection("multi_indexes_handle_and_scan", make_db());
 
     assert_eq!(
-        scan_handles(users.scan(ByStatus).unwrap()),
+        scan_handles(users.index_scan(ByStatus).unwrap()),
         vec!["yukihiro", "ada", "grace", "margaret", "linus", "dennis"]
     );
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range(AccountStatus::Active..AccountStatus::Suspended)
@@ -319,7 +327,7 @@ pub fn multi_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore>
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix(("core", AccountStatus::Active))
                 .range(1u16..2u16)
@@ -334,13 +342,13 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     let users = seeded_user_collection("scan_ranges_directions_and_cursors", make_db());
 
     assert_eq!(
-        scan_handles(users.scan(ByTeamStatusSeat).unwrap().prefix("core")),
+        scan_handles(users.index_scan(ByTeamStatusSeat).unwrap().prefix("core")),
         vec!["ada", "grace"]
     );
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
                 .direction(Direction::RightToLeft)
@@ -350,7 +358,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
                 .range((AccountStatus::Active, 1u16)..(AccountStatus::Suspended, 1u16))
@@ -360,7 +368,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
                 .range((AccountStatus::Active, 1u16)..(AccountStatus::Suspended, 1u16))
@@ -371,7 +379,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix(("core", AccountStatus::Active))
                 .range(1u16..3u16)
@@ -381,7 +389,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix(("core", AccountStatus::Active))
                 .range(1u16..3u16)
@@ -392,7 +400,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
                 .after(encode(("core", AccountStatus::Active, 1u16, &100u64)))
@@ -402,7 +410,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
                 .direction(Direction::RightToLeft)
@@ -412,7 +420,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     );
     assert!(matches!(
         users
-            .scan(ByTeamStatusSeat)
+            .index_scan(ByTeamStatusSeat)
             .unwrap()
             .prefix("core")
             .after(encode(("kernel", AccountStatus::Suspended, 1u16, &102u64)))
@@ -429,7 +437,7 @@ pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range(AccountStatus::Active..)
@@ -439,7 +447,7 @@ pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range(..AccountStatus::Suspended)
@@ -449,7 +457,7 @@ pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range(..)
@@ -459,7 +467,7 @@ pub fn prefixed_ranges_are_clamped_to_the_selected_prefix<DB: MultiStore>(
     assert_eq!(
         scan_handles(
             users
-                .scan(ByTeamStatusSeat)
+                .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix(("core", AccountStatus::Active))
                 .range(2u16..)
@@ -474,14 +482,14 @@ pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: 
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .range(..=(Region::Europe, AccountStatus::Active))
         ),
         vec!["margaret", "dennis", "ada", "grace"]
     );
     assert_eq!(
-        scan_handles(users.scan(ByRegionStatus).unwrap().range((
+        scan_handles(users.index_scan(ByRegionStatus).unwrap().range((
             std::ops::Bound::Excluded((Region::Europe, AccountStatus::Active)),
             std::ops::Bound::Unbounded,
         ))),
@@ -490,7 +498,7 @@ pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: 
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range(..=AccountStatus::Active)
@@ -500,7 +508,7 @@ pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: 
     assert_eq!(
         scan_handles(
             users
-                .scan(ByRegionStatus)
+                .index_scan(ByRegionStatus)
                 .unwrap()
                 .prefix(Region::Europe)
                 .range((
@@ -510,6 +518,48 @@ pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: 
         ),
         vec!["linus"]
     );
+}
+
+pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<DB: MultiStore>(
+    make_db: &impl Fn() -> DB,
+) {
+    let users = seeded_user_collection("collection_scan_primary_key_bounds", make_db());
+
+    assert_eq!(
+        scan_handles(users.scan().unwrap()),
+        vec!["ada", "grace", "linus", "margaret", "yukihiro", "dennis"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().range(101u64..104u64)),
+        vec!["grace", "linus", "margaret"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().direction(Direction::RightToLeft)),
+        vec!["dennis", "yukihiro", "margaret", "linus", "grace", "ada"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().after(encode(101u64))),
+        vec!["linus", "margaret", "yukihiro", "dennis"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan()
+                .unwrap()
+                .direction(Direction::RightToLeft)
+                .after(encode(103u64))
+        ),
+        vec!["linus", "grace", "ada"]
+    );
+    assert!(matches!(
+        users
+            .scan()
+            .unwrap()
+            .range(101u64..104u64)
+            .after(encode(105u64))
+            .iter(),
+        Err(Error::CursorOutOfBounds)
+    ));
 }
 
 pub type UserCollection<DB> = Collection<
