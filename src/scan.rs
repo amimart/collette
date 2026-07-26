@@ -27,7 +27,7 @@
 //!     .iter()?;
 //! ```
 
-use crate::bounds::{prefixed_range, IntoScanRange, ScanBound, ScanRange};
+use crate::bounds::{BoundsEncoder, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::item::Item;
@@ -173,6 +173,10 @@ pub trait Scan: Sized {
     /// Executor used when the scan is opened.
     type Executor: ScanExecutor;
 
+    type BoundsEncoder<'a>: BoundsEncoder<Self::Key<'a>>
+    where
+        Self: 'a;
+
     /// Compiles this builder into encoded scan bounds.
     ///
     /// # Examples
@@ -224,6 +228,10 @@ where
     where
         Self: 'b;
     type Executor = IndexExecutor<ReadHandle, Record, Idx>;
+    type BoundsEncoder<'b>
+        = <Idx::Kind<'b> as IndexKind<Idx::Key<'b>, Record::Key<'b>>>::BoundsEncoder
+    where
+        Self: 'b;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         Ok(CompiledScan {
@@ -281,7 +289,9 @@ where
         R: RangeBounds<<Self as Scan>::Key<'a>>,
     {
         RangeScan {
-            range: (range.start_bound(), range.end_bound()).range(),
+            range: <<Self as Scan>::BoundsEncoder<'a> as BoundsEncoder<
+                <Self as Scan>::Key<'a>,
+            >>::encode_range(range),
             inner: self,
             _marker: Default::default(),
         }
@@ -408,7 +418,7 @@ where
 impl<'a, S, P> Scan for PrefixedScan<'a, S, P>
 where
     S: Scan,
-    P: Prefix,
+    P: Prefix + 'a,
     S::Key<'a>: Prefixable<P>,
 {
     type Key<'b>
@@ -416,10 +426,16 @@ where
     where
         Self: 'b;
     type Executor = S::Executor;
+    type BoundsEncoder<'b>
+        = S::BoundsEncoder<'b>
+    where
+        Self: 'b;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
-        scan.range = self.prefix.range();
+        scan.range = <<Self as Scan>::BoundsEncoder<'a> as BoundsEncoder<
+            <Self as Scan>::Key<'a>,
+        >>::encode_prefix(&self.prefix);
         Ok(scan)
     }
 }
@@ -451,7 +467,7 @@ where
         R: RangeBounds<<S::Key<'a> as Prefixable<P>>::Suffix>,
     {
         RangeScan {
-            range: prefixed_range::<S::Key<'a>, P, <S::Key<'a> as Prefixable<P>>::Suffix>(
+            range: <S::BoundsEncoder<'a> as BoundsEncoder<S::Key<'a>>>::encode_prefixed_range(
                 self.prefix.clone(),
                 range,
             ),
@@ -530,6 +546,10 @@ where
     where
         Self: 'b;
     type Executor = S::Executor;
+    type BoundsEncoder<'b>
+        = S::BoundsEncoder<'b>
+    where
+        Self: 'b;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
@@ -606,6 +626,10 @@ where
     where
         Self: 'b;
     type Executor = S::Executor;
+    type BoundsEncoder<'b>
+        = S::BoundsEncoder<'b>
+    where
+        Self: 'b;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
@@ -669,6 +693,10 @@ where
     where
         Self: 'b;
     type Executor = S::Executor;
+    type BoundsEncoder<'b>
+        = S::BoundsEncoder<'b>
+    where
+        Self: 'b;
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
