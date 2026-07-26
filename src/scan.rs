@@ -31,7 +31,7 @@ use crate::bounds::{BoundsEncoder, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::item::Item;
-use crate::iter::IndexIterator;
+use crate::iter::{CollectionIterator, IndexIterator};
 use crate::key::Key;
 use crate::prefix::{Prefix, Prefixable};
 use crate::store::{MultiStoreReadHandle, ReadKVStore};
@@ -146,6 +146,44 @@ where
                 .map_err(Error::backend)?,
             self.read_handle
                 .open_store(self.collection_name)
+                .map_err(Error::backend)?,
+        ))
+    }
+}
+
+/// Executor used by collection scans.
+///
+/// It opens the collection main primary store, applies the compiled bounds, and give it to the
+/// [`CollectionIterator`] to load records.
+pub struct CollectionScanExecutor<ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    collection_name: &'static str,
+    read_handle: ReadHandle,
+
+    _marker: PhantomData<Record>,
+}
+
+impl<ReadHandle, Record> ScanExecutor for CollectionScanExecutor<ReadHandle, Record>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    type Iter = CollectionIterator<ReadHandle::Store, Record>;
+
+    fn open(
+        self,
+        start: ScanBound,
+        end: ScanBound,
+        direction: Direction,
+    ) -> Result<Self::Iter, Error> {
+        Ok(CollectionIterator::new(
+            self.read_handle
+                .open_store(self.collection_name)
+                .map_err(Error::backend)?
+                .scan((start, end), direction)
                 .map_err(Error::backend)?,
         ))
     }
