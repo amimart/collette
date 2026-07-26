@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 //! Typed collections, indexes, and scans over ordered key-value stores.
 //!
 //! Collette sits between raw embedded KV APIs and heavier ORM/database layers:
