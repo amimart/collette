@@ -60,6 +60,18 @@ pub trait BoundsEncoder<K: Key> {
         (Bound::Included(bound.clone()), prefix_end(bound))
     }
 }
+
+pub struct ExactEncoder {}
+
+impl<K: Key> BoundsEncoder<K> for ExactEncoder {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound {
+        bound.map(|k| k.encode().as_ref().to_vec())
+    }
+
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound {
+        bound.map(|k| k.encode().as_ref().to_vec())
+    }
+}
 pub(crate) trait IntoScanRange {
     fn start_scan_bound(&self) -> ScanBound;
 
