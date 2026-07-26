@@ -23,6 +23,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     remove_deletes_existing_record(&make_db);
     remove_missing_record_is_ok(&make_db);
     insert_get_remove_get_sequence(&make_db);
+    unique_index_gets_record_by_index_key(&make_db);
     unique_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     multi_indexes_handle_and_scan_single_pair_and_triple_keys(&make_db);
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
@@ -83,6 +84,11 @@ macro_rules! collection_contract_tests {
         #[test]
         fn insert_get_remove_get_sequence() {
             $crate::common::insert_get_remove_get_sequence(&$make_db);
+        }
+
+        #[test]
+        fn unique_index_gets_record_by_index_key() {
+            $crate::common::unique_index_gets_record_by_index_key(&$make_db);
         }
 
         #[test]
@@ -266,6 +272,36 @@ pub fn insert_get_remove_get_sequence<DB: MultiStore>(make_db: &impl Fn() -> DB)
 
     users.remove(ada.id).unwrap();
     assert_eq!(users.get(ada.id).unwrap(), None);
+}
+
+pub fn unique_index_gets_record_by_index_key<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("unique_index_gets_record_by_index_key", make_db());
+
+    assert_eq!(
+        users
+            .index_scan(UniqueEmail)
+            .unwrap()
+            .get("ada@example.test".to_string())
+            .unwrap(),
+        Some(sample_ada())
+    );
+    assert_eq!(
+        users
+            .index_scan(UniqueRegionHandle)
+            .unwrap()
+            .get((Region::Europe, "grace".to_string()))
+            .unwrap()
+            .map(|user| user.handle),
+        Some("grace".to_string())
+    );
+    assert_eq!(
+        users
+            .index_scan(UniqueRegionPlanHandle)
+            .unwrap()
+            .get((Region::Europe, Plan::Team, "missing".to_string()))
+            .unwrap(),
+        None
+    );
 }
 
 pub fn unique_indexes_handle_and_scan_single_pair_and_triple_keys<DB: MultiStore>(
