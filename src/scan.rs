@@ -47,7 +47,7 @@
 
 use crate::bounds::{BoundsEncoder, ExactEncoder, ScanBound, ScanRange};
 use crate::error::Error;
-use crate::index::{Index, IndexKind};
+use crate::index::{Index, IndexKind, UniqueIndexKind};
 use crate::item::Item;
 use crate::iter::{CollectionIterator, Cursor, IndexIterator};
 use crate::key::Key;
@@ -403,6 +403,61 @@ where
             inner: self,
             _marker: Default::default(),
         }
+    }
+}
+
+impl<'a, ReadHandle, Record, Idx> IndexScan<'a, ReadHandle, Record, Idx>
+where
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item + 'a,
+    Idx: Index<Record>,
+    for<'b> Idx::Kind<'b>: UniqueIndexKind<Idx::Key<'b>, Record::Key<'b>>,
+{
+    /// Retrieves a record by unique index key.
+    ///
+    /// This method is only available for indexes whose [`IndexKind`] is
+    /// [`Unique`](crate::Unique). It first resolves the primary key from the
+    /// unique index, then loads and decodes the associated record from the
+    /// collection store.
+    ///
+    /// Returns `Ok(None)` when no record exists for the given index key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let user = users
+    ///     .index_scan(ByEmail)?
+    ///     .get("ada@example.test".to_string())?;
+    /// ```
+    pub fn get(
+        self,
+        key: impl std::borrow::Borrow<<<Idx as Index<Record>>::Key<'a> as Key>::OwnedKey>,
+    ) -> Result<Option<Record>, Error> {
+        let index_key = key.borrow().encode();
+        let index_store = self
+            .executor
+            .read_handle
+            .open_store(Idx::NAME)
+            .map_err(Error::backend)?;
+        let primary_key = index_store.get(index_key).map_err(Error::backend)?;
+
+        let Some(primary_key) = primary_key else {
+            return Ok(None);
+        };
+
+        let primary_store = self
+            .executor
+            .read_handle
+            .open_store(self.executor.collection_name)
+            .map_err(Error::backend)?;
+
+        let record = primary_store
+            .get(primary_key.as_ref())
+            .map_err(Error::backend)?
+            .map(|bytes| Record::from_bytes(bytes.as_ref()).map_err(Error::codec))
+            .transpose()?;
+
+        Ok(record)
     }
 }
 
@@ -913,16 +968,17 @@ where
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::index::{Index, Multi};
+    use crate::index::{Index, Multi, Unique};
     use crate::item::Item;
     use crate::key::Key;
     use crate::prefix::encoded_prefix_range;
     use crate::store::MultiStore;
     use crate::testing::{MockDb, MockReadHandle, ScanLog};
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq, Eq)]
     struct Record {
         id: u32,
         group: u32,
@@ -938,15 +994,33 @@ mod tests {
         }
 
         fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
-            Ok(vec![])
+            Ok(self.id.to_be_bytes().to_vec())
         }
 
-        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
+        fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+            let id = u32::from_be_bytes(
+                bytes
+                    .try_into()
+                    .map_err(|_| std::io::Error::other("bad length"))?,
+            );
             Ok(Self {
-                id: 0,
+                id,
                 group: 0,
                 number: 0,
             })
+        }
+    }
+
+    struct ByUniqueNumber;
+
+    impl Index<Record> for ByUniqueNumber {
+        type Key<'a> = u32;
+        type Kind<'a> = Unique;
+
+        const NAME: &'static str = "unique_number";
+
+        fn key(item: &Record) -> Self::Key<'_> {
+            item.number
         }
     }
 
@@ -1015,6 +1089,51 @@ mod tests {
                 Direction::LeftToRight,
             )),
         );
+    }
+
+    #[test]
+    fn unique_index_scan_get_loads_record_by_index_key() {
+        let primary_key = encode_primary_key(7);
+        let record = Record {
+            id: 7,
+            group: 2,
+            number: 99,
+        };
+        let db = MockDb::new()
+            .with_data(ByUniqueNumber::NAME, 99u32.encode(), primary_key.clone())
+            .with_data("records", primary_key.clone(), record.to_bytes().unwrap());
+        let log = db.log();
+        let read = db.read("records").unwrap();
+
+        let found = IndexScan::<_, Record, ByUniqueNumber>::new(read, "records")
+            .get(99u32)
+            .unwrap();
+
+        assert_eq!(
+            found,
+            Some(Record {
+                id: 7,
+                group: 0,
+                number: 0
+            })
+        );
+        assert_eq!(log.borrow().opens, vec![ByUniqueNumber::NAME, "records"]);
+        assert_eq!(log.borrow().gets, vec![encode_primary_key(99), primary_key]);
+    }
+
+    #[test]
+    fn unique_index_scan_get_returns_none_when_index_key_is_missing() {
+        let db = MockDb::new();
+        let log = db.log();
+        let read = db.read("records").unwrap();
+
+        let found = IndexScan::<_, Record, ByUniqueNumber>::new(read, "records")
+            .get(99u32)
+            .unwrap();
+
+        assert_eq!(found, None);
+        assert_eq!(log.borrow().opens, vec![ByUniqueNumber::NAME]);
+        assert_eq!(log.borrow().gets, vec![encode_primary_key(99)]);
     }
 
     #[test]
