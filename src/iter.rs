@@ -4,6 +4,7 @@ use crate::error::Error;
 use crate::item::Item;
 use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
+use crate::inline_vec::IVec;
 
 /// One record returned from a collection or index scan.
 pub struct IndexEntry<Record> {
@@ -18,7 +19,7 @@ pub struct IndexEntry<Record> {
 /// Cursor support is currently internal-facing; future APIs may expose stable
 /// cursor serialization.
 #[allow(dead_code)]
-pub struct Cursor(Vec<u8>);
+pub struct Cursor(IVec);
 
 /// Iterator over records matched by a secondary index scan.
 ///
@@ -73,7 +74,7 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(entry.key().to_vec()),
+                    key: Cursor(IVec::from(entry.key())),
                 })
             })
         })
@@ -119,7 +120,7 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(entry.key().to_vec()),
+                    key: Cursor(IVec::from(entry.key())),
                 })
             })
         })
