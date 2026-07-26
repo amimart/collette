@@ -72,6 +72,27 @@ impl<K: Key> BoundsEncoder<K> for ExactEncoder {
         bound.map(|k| k.encode().as_ref().to_vec())
     }
 }
+
+pub struct PrefixEncoder {}
+
+impl<K: Key> BoundsEncoder<K> for PrefixEncoder {
+    fn encode_start_bound(bound: Bound<K>) -> ScanBound {
+        match bound {
+            Bound::Included(k) => Bound::Included(k.encode().as_ref().to_vec()),
+            Bound::Excluded(k) => prefix_end(k.encode().as_ref().to_vec()),
+            Bound::Unbounded => Bound::Unbounded,
+        }
+    }
+
+    fn encode_end_bound(bound: Bound<K>) -> ScanBound {
+        match bound {
+            Bound::Included(k) => prefix_end(k.encode().as_ref().to_vec()),
+            Bound::Excluded(k) => Bound::Excluded(k.encode().as_ref().to_vec()),
+            Bound::Unbounded => Bound::Unbounded,
+        }
+    }
+}
+
 pub(crate) trait IntoScanRange {
     fn start_scan_bound(&self) -> ScanBound;
 
@@ -244,6 +265,102 @@ mod tests {
             (
                 Bound::Included(encode((7u32, 8u16, 9u8))),
                 Bound::Excluded(encode((7u32, 8u16, 10u8)))
+            )
+        );
+    }
+
+    #[test]
+    fn exact_encoder_preserves_bound_inclusivity() {
+        let bounds = ExactEncoder::encode_range((
+            Bound::Included((1u32, 10u16)),
+            Bound::Excluded((2u32, 20u16)),
+        ));
+
+        assert_eq!(
+            bounds,
+            (
+                Bound::Included(encode((1u32, 10u16))),
+                Bound::Excluded(encode((2u32, 20u16))),
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_encoder_excludes_start_logical_key_group() {
+        let bounds =
+            PrefixEncoder::encode_range((Bound::Excluded((1u32, 10u16)), Bound::Unbounded));
+
+        assert_eq!(
+            bounds,
+            (prefix_end(encode((1u32, 10u16))), Bound::Unbounded)
+        );
+    }
+
+    #[test]
+    fn prefix_encoder_includes_end_logical_key_group() {
+        let bounds = PrefixEncoder::encode_range(..=(1u32, 10u16));
+
+        assert_eq!(
+            bounds,
+            (Bound::Unbounded, prefix_end(encode((1u32, 10u16))))
+        );
+    }
+
+    #[test]
+    fn exact_prefixed_range_composes_single_prefix_and_suffix_bounds() {
+        let range = <ExactEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(
+            7u32,
+            (Bound::Excluded(10u16), Bound::Included(20u16)),
+        );
+
+        assert_eq!(
+            range,
+            (
+                Bound::Excluded(encode((7u32, 10u16))),
+                Bound::Included(encode((7u32, 20u16)))
+            )
+        );
+    }
+
+    #[test]
+    fn exact_prefixed_range_clamps_unbounded_suffix_bounds() {
+        let range = <ExactEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(7u32, ..);
+
+        assert_eq!(
+            range,
+            (
+                Bound::Included(encode(7u32)),
+                crate::prefix::prefix_end(encode(7u32))
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_prefixed_range_includes_end_logical_key_group() {
+        let range =
+            <PrefixEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(7u32, ..=20u16);
+
+        assert_eq!(
+            range,
+            (
+                Bound::Included(encode(7u32)),
+                prefix_end(encode((7u32, 20u16)))
+            )
+        );
+    }
+
+    #[test]
+    fn prefix_prefixed_range_excludes_start_logical_key_group() {
+        let range = <PrefixEncoder as BoundsEncoder<(u32, u16)>>::encode_prefixed_range(
+            7u32,
+            (Bound::Excluded(10u16), Bound::Unbounded),
+        );
+
+        assert_eq!(
+            range,
+            (
+                prefix_end(encode((7u32, 10u16))),
+                crate::prefix::prefix_end(encode(7u32))
             )
         );
     }
