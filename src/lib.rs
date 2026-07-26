@@ -100,8 +100,8 @@ pub use index::{Index, Multi, Unique};
 pub use item::Item;
 pub use key::{Key, KeySize};
 pub use scan::{
-    AfterScan, CompiledScan, DirectedScan, Direction, IndexScan, PrefixableScan, PrefixedScan,
-    RangeScan, Scan, ScanExecutor,
+    AfterScan, CollectionScan, CompiledScan, DirectedScan, Direction, IndexScan, PrefixableScan,
+    PrefixedScan, RangeScan, Scan, ScanExecutor,
 };
 
 /// Backend implementations for Collette's storage traits.
@@ -117,7 +117,7 @@ pub mod index_registry;
 mod inline_vec;
 /// Collection item contract.
 pub mod item;
-/// Iterator types returned by index scans.
+/// Iterator types returned by collection and index scans.
 pub mod iter;
 /// Ordered key encoding traits and helpers.
 pub mod key;
@@ -125,7 +125,7 @@ pub mod key;
 pub mod macros;
 /// Prefix-bound helpers for scanning composite keys.
 pub mod prefix;
-/// Typed index scan builders.
+/// Typed collection and index scan builders.
 pub mod scan;
 /// Backend storage adapter traits.
 pub mod store;
