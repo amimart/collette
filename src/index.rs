@@ -1,6 +1,7 @@
 use crate::bounds::{BoundsEncoder, ExactEncoder, PrefixEncoder};
 use crate::error::Error;
 use crate::item::Item;
+use crate::iter::Cursor;
 use crate::key::{AppendKey, Key};
 use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 
@@ -131,6 +132,29 @@ pub trait Index<Record: Item> {
 
     /// Extracts the logical index key from a record.
     fn key(record: &Record) -> Self::Key<'_>;
+
+    /// Builds a cursor for this index from a record.
+    ///
+    /// The cursor uses the physical key layout of the index kind. For
+    /// [`Unique`] indexes this is the logical index key; for [`Multi`] indexes
+    /// it is the logical index key with the record primary key appended.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let cursor = ByStatus::cursor(&user);
+    ///
+    /// let next_page = users.index_scan(ByStatus)?
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
+    fn cursor<'a>(record: &'a Record) -> Cursor
+    where
+        Self::Kind<'a>: IndexKind<Self::Key<'a>, Record::Key<'a>>,
+    {
+        let pk = record.key();
+        Cursor::from_key(Self::Kind::store_key(Self::key(record), &pk))
+    }
 
     /// Updates this index after a record insert, save, or update.
     ///
