@@ -416,6 +416,95 @@ where
         })
     }
 }
+
+impl<'a, ReadHandle, Record> CollectionScan<'a, ReadHandle, Record>
+where
+    Self: Scan,
+    ReadHandle: MultiStoreReadHandle,
+    Record: Item,
+{
+    /// Creates a full collection scan from a read handle and collection store name.
+    ///
+    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::scan).
+    /// Application code should generally start scans from the collection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let scan = users.scan()?;
+    /// ```
+    pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
+        Self {
+            executor: CollectionScanExecutor {
+                collection_name,
+                read_handle,
+                _marker: Default::default(),
+            },
+            _marker: Default::default(),
+        }
+    }
+
+    /// Restricts the scan to a range over the primary key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let active_recent = users.scan()?
+    ///     .range(user_id_from..user_id_to)
+    ///     .iter()?;
+    /// ```
+    pub fn range<R>(self, range: R) -> RangeScan<'a, Self>
+    where
+        R: RangeBounds<<Self as Scan>::Key<'a>>,
+    {
+        RangeScan {
+            range: <<Self as Scan>::BoundsEncoder<'a> as BoundsEncoder<
+                <Self as Scan>::Key<'a>,
+            >>::encode_range(range),
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    /// Sets the scan direction.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Direction, Scan};
+    ///
+    /// let newest_first = users.scan()?
+    ///     .direction(Direction::RightToLeft)
+    ///     .iter()?;
+    /// ```
+    pub fn direction(self, direction: Direction) -> DirectedScan<'a, Self> {
+        DirectedScan {
+            direction,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+
+    /// Starts the scan after an encoded cursor key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use collette::{Key, Scan};
+    ///
+    /// let next_page = users.scan()?
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
+    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+        AfterScan {
+            cursor,
+            inner: self,
+            _marker: Default::default(),
+        }
+    }
+}
+
 /// Adds typed prefix support to a scan.
 ///
 /// A prefix is a leftmost part of the scan key. For an index key
