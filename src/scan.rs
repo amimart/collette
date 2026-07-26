@@ -3,13 +3,13 @@
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`Scan::iter`] opens the backend stores and returns an iterator.
 //!
-//! A scan starts from [`Collection::scan`](crate::Collection::index_scan), then can be
+//! A scan starts from [`Collection::index_scan`](crate::Collection::index_scan), then can be
 //! refined with range, prefix, direction, and cursor steps:
 //!
 //! ```rust,ignore
 //! use collette::{Direction, Key, PrefixableScan, Scan};
 //!
-//! let users = collection.scan(ByStatusAndCreatedAt)?
+//! let users = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
 //!     .range(created_from..created_to)
 //!     .direction(Direction::LeftToRight);
@@ -21,13 +21,13 @@
 //!     .as_ref()
 //!     .to_vec();
 //!
-//! let next_page = collection.scan(ByStatusAndCreatedAt)?
+//! let next_page = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
 //!     .after(cursor)
 //!     .iter()?;
 //! ```
 
-use crate::bounds::{BoundsEncoder, ScanBound, ScanRange};
+use crate::bounds::{BoundsEncoder, ExactEncoder, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::item::Item;
@@ -97,7 +97,7 @@ impl<E: ScanExecutor> CompiledScan<E> {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// let compiled = users.index_scan(ByEmail)?.compile()?;
     /// let iter = compiled.iter()?;
     /// ```
     pub fn iter(self) -> Result<E::Iter, Error> {
@@ -199,7 +199,7 @@ where
 /// ```rust,ignore
 /// use collette::{Direction, Scan};
 ///
-/// let iter = users.scan(ByEmail)?
+/// let iter = users.index_scan(ByEmail)?
 ///     .direction(Direction::LeftToRight)
 ///     .iter()?;
 /// ```
@@ -220,7 +220,7 @@ pub trait Scan: Sized {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let compiled = users.scan(ByEmail)?.compile()?;
+    /// let compiled = users.index_scan(ByEmail)?.compile()?;
     /// ```
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error>;
 
@@ -231,7 +231,7 @@ pub trait Scan: Sized {
     /// ```rust,ignore
     /// use collette::Scan;
     ///
-    /// let iter = users.scan(ByEmail)?.iter()?;
+    /// let iter = users.index_scan(ByEmail)?.iter()?;
     /// ```
     fn iter(self) -> Result<<Self::Executor as ScanExecutor>::Iter, Error> {
         self.compile()?.iter()
@@ -241,7 +241,7 @@ pub trait Scan: Sized {
 /// Initial builder for a full index scan.
 ///
 /// A full scan has no bounds and scans left-to-right by default. Use
-/// [`Collection::scan`](crate::Collection::index_scan) to create this builder.
+/// [`Collection::index_scan`](crate::Collection::index_scan) to create this builder.
 pub struct IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -290,13 +290,13 @@ where
 {
     /// Creates a full index scan from a read handle and collection store name.
     ///
-    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::index_scan).
+    /// This constructor is primarily used by [`Collection::index_scan`](crate::Collection::index_scan).
     /// Application code should generally start scans from the collection.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let scan = users.scan(ByEmail)?;
+    /// let scan = users.index_scan(ByEmail)?;
     /// ```
     pub fn new(read_handle: ReadHandle, collection_name: &'static str) -> Self {
         Self {
@@ -318,7 +318,7 @@ where
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let active_recent = users.scan(ByStatusAndCreatedAt)?
+    /// let active_recent = users.index_scan(ByStatusAndCreatedAt)?
     ///     .range((Status::Active, from)..(Status::Active, to))
     ///     .iter()?;
     /// ```
@@ -342,7 +342,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, Scan};
     ///
-    /// let newest_first = users.scan(ByCreatedAt)?
+    /// let newest_first = users.index_scan(ByCreatedAt)?
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
     /// ```
@@ -370,7 +370,7 @@ where
     ///     .as_ref()
     ///     .to_vec();
     ///
-    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
@@ -394,7 +394,7 @@ where
 /// ```rust,ignore
 /// use collette::{PrefixableScan, Scan};
 ///
-/// let active = users.scan(ByStatusAndCreatedAt)?
+/// let active = users.index_scan(ByStatusAndCreatedAt)?
 ///     .prefix(Status::Active)
 ///     .iter()?;
 /// ```
@@ -410,7 +410,7 @@ where
     /// ```rust,ignore
     /// use collette::{PrefixableScan, Scan};
     ///
-    /// let active = users.scan(ByStatusAndCreatedAt)?
+    /// let active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .iter()?;
     /// ```
@@ -495,7 +495,7 @@ where
     /// ```rust,ignore
     /// use collette::{PrefixableScan, Scan};
     ///
-    /// let recently_active = users.scan(ByStatusAndCreatedAt)?
+    /// let recently_active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .range(created_from..created_to)
     ///     .iter()?;
@@ -521,7 +521,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, PrefixableScan, Scan};
     ///
-    /// let newest_active = users.scan(ByStatusAndCreatedAt)?
+    /// let newest_active = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
@@ -548,7 +548,7 @@ where
     ///     .as_ref()
     ///     .to_vec();
     ///
-    /// let next_page = users.scan(ByStatusAndCreatedAt)?
+    /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .after(cursor)
     ///     .iter()?;
@@ -607,7 +607,7 @@ where
     /// ```rust,ignore
     /// use collette::{Direction, Scan};
     ///
-    /// let descending = users.scan(ByCreatedAt)?
+    /// let descending = users.index_scan(ByCreatedAt)?
     ///     .range(from..to)
     ///     .direction(Direction::RightToLeft)
     ///     .iter()?;
@@ -631,7 +631,7 @@ where
     ///
     /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
     ///
-    /// let next_page = users.scan(ByCreatedAt)?
+    /// let next_page = users.index_scan(ByCreatedAt)?
     ///     .range(from..to)
     ///     .after(cursor)
     ///     .iter()?;
@@ -693,7 +693,7 @@ where
     ///
     /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
     ///
-    /// let previous_page = users.scan(ByCreatedAt)?
+    /// let previous_page = users.index_scan(ByCreatedAt)?
     ///     .direction(Direction::RightToLeft)
     ///     .after(cursor)
     ///     .iter()?;
