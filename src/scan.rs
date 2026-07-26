@@ -1,10 +1,31 @@
-//! Typed scan builders for secondary indexes.
+//! Typed scan builders for collections and secondary indexes.
 //!
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`Scan::iter`] opens the backend stores and returns an iterator.
 //!
-//! A scan starts from [`Collection::index_scan`](crate::Collection::index_scan), then can be
-//! refined with range, prefix, direction, and cursor steps:
+//! Use [`Collection::scan`](crate::Collection::scan) to scan records by primary
+//! key, or [`Collection::index_scan`](crate::Collection::index_scan) to scan a
+//! registered secondary index. Both scan kinds can be refined with range,
+//! direction, and cursor steps; index scans can also use typed prefixes.
+//!
+//! # Collection scans
+//!
+//! ```rust,ignore
+//! use collette::{Direction, Key, Scan};
+//!
+//! let page = collection.scan()?
+//!     .range(first_id..last_id)
+//!     .direction(Direction::LeftToRight)
+//!     .iter()?;
+//!
+//! let cursor = last_seen_id.encode().as_ref().to_vec();
+//!
+//! let next_page = collection.scan()?
+//!     .after(cursor)
+//!     .iter()?;
+//! ```
+//!
+//! # Index scans
 //!
 //! ```rust,ignore
 //! use collette::{Direction, Key, PrefixableScan, Scan};
@@ -54,7 +75,7 @@ pub enum Direction {
 /// iterator for the backend.
 ///
 /// Application code usually does not implement or call this trait directly.
-/// Collection scans use Collette's index executor internally.
+/// Collection and index scans use Collette's executors internally.
 pub trait ScanExecutor: Sized {
     /// Iterator produced by this executor.
     type Iter;
@@ -151,10 +172,11 @@ where
     }
 }
 
-/// Executor used by collection scans.
+/// Executor used by primary collection scans.
 ///
-/// It opens the collection main primary store, applies the compiled bounds, and give it to the
-/// [`CollectionIterator`] to load records.
+/// It opens the collection's primary store, applies the compiled bounds, and
+/// gives the resulting backend iterator to [`CollectionIterator`] to decode
+/// records.
 pub struct CollectionScanExecutor<ReadHandle, Record>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -199,12 +221,16 @@ where
 /// ```rust,ignore
 /// use collette::{Direction, Scan};
 ///
-/// let iter = users.index_scan(ByEmail)?
+/// let iter = users.scan()?
 ///     .direction(Direction::LeftToRight)
 ///     .iter()?;
 /// ```
 pub trait Scan: Sized {
-    /// Logical index key accepted by range builders.
+    /// Logical key accepted by range builders.
+    ///
+    /// For collection scans this is the record's primary key. For index scans
+    /// this is the logical index key, before any backend-specific physical key
+    /// expansion.
     type Key<'a>: Key
     where
         Self: 'a;
@@ -221,7 +247,7 @@ pub trait Scan: Sized {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let compiled = users.index_scan(ByEmail)?.compile()?;
+    /// let compiled = users.scan()?.compile()?;
     /// ```
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error>;
 
@@ -232,7 +258,7 @@ pub trait Scan: Sized {
     /// ```rust,ignore
     /// use collette::Scan;
     ///
-    /// let iter = users.index_scan(ByEmail)?.iter()?;
+    /// let iter = users.scan()?.iter()?;
     /// ```
     fn iter(self) -> Result<<Self::Executor as ScanExecutor>::Iter, Error> {
         self.compile()?.iter()
@@ -386,6 +412,12 @@ where
     }
 }
 
+/// Initial builder for a full primary collection scan.
+///
+/// A collection scan reads records directly from the collection's primary
+/// store, ordered by [`Item::Key`]. It scans left-to-right without bounds by
+/// default. Use [`Collection::scan`](crate::Collection::scan) to create this
+/// builder.
 pub struct CollectionScan<'a, ReadHandle, Record>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -451,6 +483,9 @@ where
 
     /// Restricts the scan to a range over the primary key.
     ///
+    /// The bounds are encoded with exact primary-key semantics. Unlike a
+    /// `Multi` index scan, there is no appended key segment to account for.
+    ///
     /// # Examples
     ///
     /// ```rust,ignore
@@ -491,6 +526,10 @@ where
     }
 
     /// Starts the scan after an encoded cursor key.
+    ///
+    /// The cursor must be encoded with the same layout as the primary key.
+    /// For example, a `u64` primary key cursor can be built with
+    /// `last_seen_id.encode().as_ref().to_vec()`.
     ///
     /// # Examples
     ///

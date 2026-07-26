@@ -1,19 +1,19 @@
-//! Iterator types produced by index scans.
+//! Iterator types produced by collection and index scans.
 
 use crate::error::Error;
 use crate::item::Item;
 use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
 
-/// One record returned from an index scan.
+/// One record returned from a collection or index scan.
 pub struct IndexEntry<Record> {
-    /// The decoded record loaded from the collection primary store.
+    /// The decoded record.
     pub record: Record,
     /// Cursor for resuming a scan after this entry.
     pub key: Cursor,
 }
 
-/// Opaque cursor key for an index entry.
+/// Opaque cursor key for a scan entry.
 ///
 /// Cursor support is currently internal-facing; future APIs may expose stable
 /// cursor serialization.
@@ -95,6 +95,7 @@ where
     Store: ReadKVStore,
     Record: Item,
 {
+    /// Creates an iterator from a primary-store iterator.
     pub fn new(inner: Store::Iter) -> Self {
         Self {
             inner,

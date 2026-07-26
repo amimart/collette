@@ -292,6 +292,57 @@ where
         ))
     }
 
+    /// Creates a typed scan over this collection's primary store.
+    ///
+    /// Collection scans iterate records ordered by their primary [`Item::Key`].
+    /// Use [`range`](crate::scan::CollectionScan::range) to restrict the scan to
+    /// primary-key bounds, [`direction`](crate::scan::CollectionScan::direction)
+    /// to reverse iteration, and [`after`](crate::scan::CollectionScan::after)
+    /// to resume after an encoded cursor.
+    ///
+    /// For scans over secondary indexes, use [`index_scan`](Self::index_scan)
+    /// instead.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use collette::backend::memory::InMemoryMultiStore;
+    /// # use collette::{collection, Item, Scan};
+    /// #
+    /// # #[derive(Clone)]
+    /// # struct User {
+    /// #     id: u64,
+    /// #     email: String,
+    /// # }
+    /// #
+    /// # impl Item for User {
+    /// #     type Key<'a> = u64;
+    /// #     type Error = std::convert::Infallible;
+    /// #
+    /// #     fn key(&self) -> Self::Key<'_> {
+    /// #         self.id
+    /// #     }
+    /// #
+    /// #     fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+    /// #         Ok(self.email.as_bytes().to_vec())
+    /// #     }
+    /// #
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+    /// #         Ok(Self {
+    /// #             id: 0,
+    /// #             email: String::from_utf8_lossy(bytes).into_owned(),
+    /// #         })
+    /// #     }
+    /// # }
+    /// #
+    /// # let db = InMemoryMultiStore::new();
+    /// # let users = collection::<User, _>("users", db).build();
+    /// let iter = users
+    ///     .scan()?
+    ///     .range(100u64..200u64)
+    ///     .iter()?;
+    /// # Ok::<(), collette::Error>(())
+    /// ```
     pub fn scan<'a>(&self) -> Result<CollectionScan<'a, DB::ReadHandle, Record>, Error> {
         Ok(CollectionScan::new(
             self.db.read(self.name).map_err(Error::backend)?,
