@@ -3,7 +3,7 @@
 //! Scans are lazy: they collect bounds, direction, and cursor information until
 //! [`Scan::iter`] opens the backend stores and returns an iterator.
 //!
-//! A scan starts from [`Collection::scan`](crate::Collection::scan), then can be
+//! A scan starts from [`Collection::scan`](crate::Collection::index_scan), then can be
 //! refined with range, prefix, direction, and cursor steps:
 //!
 //! ```rust,ignore
@@ -203,7 +203,7 @@ pub trait Scan: Sized {
 /// Initial builder for a full index scan.
 ///
 /// A full scan has no bounds and scans left-to-right by default. Use
-/// [`Collection::scan`](crate::Collection::scan) to create this builder.
+/// [`Collection::scan`](crate::Collection::index_scan) to create this builder.
 pub struct IndexFullScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
@@ -252,7 +252,7 @@ where
 {
     /// Creates a full index scan from a read handle and collection store name.
     ///
-    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::scan).
+    /// This constructor is primarily used by [`Collection::scan`](crate::Collection::index_scan).
     /// Application code should generally start scans from the collection.
     ///
     /// # Examples

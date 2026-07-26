@@ -271,12 +271,12 @@ where
     /// #     .with_index::<ByEmail>()
     /// #     .build();
     /// let iter = users
-    ///     .scan(ByEmail)?
+    ///     .index_scan(ByEmail)?
     ///     .direction(collette::Direction::LeftToRight)
     ///     .iter()?;
     /// # Ok::<(), collette::Error>(())
     /// ```
-    pub fn scan<'a, Idx, P>(
+    pub fn index_scan<'a, Idx, P>(
         &self,
         _idx: Idx,
     ) -> Result<IndexFullScan<'a, DB::ReadHandle, Record, Idx>, Error>
@@ -296,7 +296,7 @@ where
 /// Builder used to register the indexes available on a [`Collection`].
 ///
 /// Each call to [`with_index`](Self::with_index) adds the index type to the
-/// collection's type-level registry, allowing [`Collection::scan`] to reject
+/// collection's type-level registry, allowing [`Collection::index_scan`] to reject
 /// unregistered indexes at compile time. Calling [`build`](Self::build)
 /// prepares the backend stores required by the collection.
 pub struct CollectionBuilder<DB, Record, Indexes>

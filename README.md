@@ -195,12 +195,12 @@ Then scan it by prefix or by range with cursor support:
 ```rust
 use collette::{Direction, Key, PrefixableScan, Scan};
 
-let active_users = users.scan(ByStatusAndCreatedAt)?
+let active_users = users.index_scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
     .direction(Direction::LeftToRight)
     .iter()?;
 
-let recently_active_users = users.scan(ByStatusAndCreatedAt)?
+let recently_active_users = users.index_scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
     .range(1_700_000_000..1_800_000_000)
     .direction(Direction::LeftToRight)
@@ -212,7 +212,7 @@ let cursor = (Status::Active, 1_700_010_000u64, &last_seen_user_id)
     .as_ref()
     .to_vec();
 
-let next_page = users.scan(ByStatusAndCreatedAt)?
+let next_page = users.index_scan(ByStatusAndCreatedAt)?
     .prefix(Status::Active)
     .direction(Direction::LeftToRight)
     .after(cursor)
