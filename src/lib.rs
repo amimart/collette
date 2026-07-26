@@ -98,6 +98,7 @@ pub use collection::{collection, Collection, CollectionBuilder};
 pub use error::{BackendError, CodecError, Error};
 pub use index::{Index, Multi, Unique};
 pub use item::Item;
+pub use iter::Cursor;
 pub use key::{Key, KeySize};
 pub use scan::{
     AfterScan, CollectionScan, CompiledScan, DirectedScan, Direction, IndexScan, PrefixableScan,
