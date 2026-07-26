@@ -231,6 +231,14 @@ where
         IndexKey: 'a;
 }
 
+#[doc(hidden)]
+pub trait UniqueIndexKind<IndexKey, PrimaryKey>: IndexKind<IndexKey, PrimaryKey>
+where
+    IndexKey: Key,
+    PrimaryKey: Key,
+{
+}
+
 /// Unique index marker.
 ///
 /// A unique index allows at most one record for each extracted index key.
@@ -255,6 +263,13 @@ where
     {
         k
     }
+}
+
+impl<IndexKey, PrimaryKey> UniqueIndexKind<IndexKey, PrimaryKey> for Unique
+where
+    IndexKey: Key,
+    PrimaryKey: Key,
+{
 }
 
 /// Multi-value index marker.
