@@ -204,7 +204,7 @@ pub trait Scan: Sized {
 ///
 /// A full scan has no bounds and scans left-to-right by default. Use
 /// [`Collection::scan`](crate::Collection::index_scan) to create this builder.
-pub struct IndexFullScan<'a, ReadHandle, Record, Idx>
+pub struct IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -216,7 +216,7 @@ where
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, ReadHandle, Record, Idx> Scan for IndexFullScan<'a, ReadHandle, Record, Idx>
+impl<'a, ReadHandle, Record, Idx> Scan for IndexScan<'a, ReadHandle, Record, Idx>
 where
     ReadHandle: MultiStoreReadHandle,
     Record: Item,
@@ -242,7 +242,7 @@ where
     }
 }
 
-impl<'a, ReadHandle, Record, Idx> IndexFullScan<'a, ReadHandle, Record, Idx>
+impl<'a, ReadHandle, Record, Idx> IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: Scan,
     ReadHandle: MultiStoreReadHandle,
@@ -380,7 +380,7 @@ where
 }
 
 impl<'a, ReadHandle, Record, Idx, P> PrefixableScan<'a, <Self as Scan>::Key<'a>, P>
-    for IndexFullScan<'a, ReadHandle, Record, Idx>
+    for IndexScan<'a, ReadHandle, Record, Idx>
 where
     Self: Scan,
     <Self as Scan>::Key<'a>: Key + Prefixable<P>,
@@ -526,7 +526,7 @@ where
 
 /// Scan builder restricted to a typed key range.
 ///
-/// Returned by [`IndexFullScan::range`] or [`PrefixedScan::range`].
+/// Returned by [`IndexScan::range`] or [`PrefixedScan::range`].
 pub struct RangeScan<'a, S>
 where
     S: Scan + 'a,
@@ -988,7 +988,7 @@ mod tests {
     }
 
     fn assert_scan<S>(
-        build: impl FnOnce(IndexFullScan<'static, MockReadHandle, Record, ByNumber>) -> S,
+        build: impl FnOnce(IndexScan<'static, MockReadHandle, Record, ByNumber>) -> S,
         expected: Result<ScanLog, ErrorKind>,
     ) where
         S: Scan<Executor = IndexExecutor<MockReadHandle, Record, ByNumber>>,
@@ -996,7 +996,7 @@ mod tests {
         let db = MockDb::new();
         let log = db.log();
         let read = db.read("records").unwrap();
-        let scan = build(IndexFullScan::<_, Record, ByNumber>::new(read, "records"));
+        let scan = build(IndexScan::<_, Record, ByNumber>::new(read, "records"));
 
         match expected {
             Ok(expected) => {

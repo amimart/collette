@@ -3,7 +3,7 @@ use crate::index::{Index, IndexKind};
 use crate::index_registry::{Cons, ContainsIndex, IndexRegistry, Nil};
 use crate::item::Item;
 use crate::key::Key;
-use crate::scan::IndexFullScan;
+use crate::scan::IndexScan;
 use crate::store::{
     MultiStore, MultiStoreReadHandle, MultiStoreWriteHandle, ReadKVStore, WriteKVStore,
 };
@@ -279,14 +279,14 @@ where
     pub fn index_scan<'a, Idx, P>(
         &self,
         _idx: Idx,
-    ) -> Result<IndexFullScan<'a, DB::ReadHandle, Record, Idx>, Error>
+    ) -> Result<IndexScan<'a, DB::ReadHandle, Record, Idx>, Error>
     where
         Record: 'a,
         Idx: Index<Record>,
         Idx::Kind<'a>: IndexKind<Idx::Key<'a>, Record::Key<'a>>,
         Indexes: ContainsIndex<Idx, P>,
     {
-        Ok(IndexFullScan::new(
+        Ok(IndexScan::new(
             self.db.read(self.name).map_err(Error::backend)?,
             Self::MAIN_STORE,
         ))
