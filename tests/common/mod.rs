@@ -10,6 +10,7 @@ use collette::iter::IndexEntry;
 use collette::key::Key;
 use collette::scan::{Direction, PrefixableScan, Scan, ScanExecutor};
 use collette::store::MultiStore;
+use collette::Cursor;
 
 pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     single_value_primary_key_behaviour(&make_db);
@@ -28,6 +29,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
     multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
     collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(&make_db);
+    scans_resume_from_returned_cursors(&make_db);
 }
 
 #[macro_export]
@@ -115,6 +117,11 @@ macro_rules! collection_contract_tests {
             $crate::common::collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(
                 &$make_db,
             );
+        }
+
+        #[test]
+        fn scans_resume_from_returned_cursors() {
+            $crate::common::scans_resume_from_returned_cursors(&$make_db);
         }
     };
 }
@@ -340,6 +347,9 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
     make_db: &impl Fn() -> DB,
 ) {
     let users = seeded_user_collection("scan_ranges_directions_and_cursors", make_db());
+    let ada = users.get(100).unwrap().unwrap();
+    let grace = users.get(101).unwrap().unwrap();
+    let linus = users.get(102).unwrap().unwrap();
 
     assert_eq!(
         scan_handles(users.index_scan(ByTeamStatusSeat).unwrap().prefix("core")),
@@ -403,7 +413,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
                 .index_scan(ByTeamStatusSeat)
                 .unwrap()
                 .prefix("core")
-                .after(encode(("core", AccountStatus::Active, 1u16, &100u64)))
+                .after(ByTeamStatusSeat::cursor(&ada))
         ),
         vec!["grace"]
     );
@@ -414,7 +424,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
                 .unwrap()
                 .prefix("core")
                 .direction(Direction::RightToLeft)
-                .after(encode(("core", AccountStatus::Active, 2u16, &101u64)))
+                .after(ByTeamStatusSeat::cursor(&grace))
         ),
         vec!["ada"]
     );
@@ -423,7 +433,7 @@ pub fn scans_filter_lexicographically_with_ranges_directions_and_cursors<DB: Mul
             .index_scan(ByTeamStatusSeat)
             .unwrap()
             .prefix("core")
-            .after(encode(("kernel", AccountStatus::Suspended, 1u16, &102u64)))
+            .after(ByTeamStatusSeat::cursor(&linus))
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
@@ -538,7 +548,7 @@ pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<D
         vec!["dennis", "yukihiro", "margaret", "linus", "grace", "ada"]
     );
     assert_eq!(
-        scan_handles(users.scan().unwrap().after(encode(101u64))),
+        scan_handles(users.scan().unwrap().after(Cursor::from_key(101u64))),
         vec!["linus", "margaret", "yukihiro", "dennis"]
     );
     assert_eq!(
@@ -547,7 +557,7 @@ pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<D
                 .scan()
                 .unwrap()
                 .direction(Direction::RightToLeft)
-                .after(encode(103u64))
+                .after(Cursor::from_key(103u64))
         ),
         vec!["linus", "grace", "ada"]
     );
@@ -556,10 +566,51 @@ pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<D
             .scan()
             .unwrap()
             .range(101u64..104u64)
-            .after(encode(105u64))
+            .after(Cursor::from_key(105u64))
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
+}
+
+pub fn scans_resume_from_returned_cursors<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("scan_returned_cursors", make_db());
+
+    let first = users
+        .scan()
+        .unwrap()
+        .iter()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.record.handle, "ada");
+
+    assert_eq!(
+        scan_handles(users.scan().unwrap().after(first.key)),
+        vec!["grace", "linus", "margaret", "yukihiro", "dennis"]
+    );
+
+    let first_core = users
+        .index_scan(ByTeamStatusSeat)
+        .unwrap()
+        .prefix("core")
+        .iter()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(first_core.record.handle, "ada");
+
+    assert_eq!(
+        scan_handles(
+            users
+                .index_scan(ByTeamStatusSeat)
+                .unwrap()
+                .prefix("core")
+                .after(first_core.key)
+        ),
+        vec!["grace"]
+    );
 }
 
 pub type UserCollection<DB> = Collection<

@@ -1,7 +1,9 @@
 //! Iterator types produced by collection and index scans.
 
 use crate::error::Error;
+use crate::inline_vec::IVec;
 use crate::item::Item;
+use crate::key::Key;
 use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
 
@@ -15,10 +17,38 @@ pub struct IndexEntry<Record> {
 
 /// Opaque cursor key for a scan entry.
 ///
-/// Cursor support is currently internal-facing; future APIs may expose stable
-/// cursor serialization.
-#[allow(dead_code)]
-pub struct Cursor(Vec<u8>);
+/// Pass a cursor to `after` on a scan builder to resume after the corresponding
+/// entry. Cursors yielded by iterators are already encoded for the scan that
+/// produced them.
+///
+/// For primary collection scans, build a cursor from a primary key with
+/// [`Cursor::from_key`]. For secondary index scans, prefer
+/// [`Index::cursor`](crate::Index::cursor), which accounts for the index kind's
+/// physical key layout.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cursor(IVec);
+
+impl Cursor {
+    /// Builds a cursor from an ordered key.
+    ///
+    /// This is primarily useful for collection scans, whose cursor layout is
+    /// the record primary key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let next_page = users.scan()?
+    ///     .after(Cursor::from_key(42u64))
+    ///     .iter()?;
+    /// ```
+    pub fn from_key(key: impl Key) -> Self {
+        Self(IVec::from(key.encode().as_ref()))
+    }
+
+    pub(crate) fn into_vec(self) -> Vec<u8> {
+        self.0.into_vec()
+    }
+}
 
 /// Iterator over records matched by a secondary index scan.
 ///
@@ -73,7 +103,7 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(entry.key().to_vec()),
+                    key: Cursor(IVec::from(entry.key())),
                 })
             })
         })
@@ -119,9 +149,27 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(entry.key().to_vec()),
+                    key: Cursor(IVec::from(entry.key())),
                 })
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_from_key_encodes_primary_key_bytes() {
+        assert_eq!(Cursor::from_key(42u64).into_vec(), 42u64.encode().as_ref());
+    }
+
+    #[test]
+    fn cursor_from_key_accepts_composite_keys() {
+        assert_eq!(
+            Cursor::from_key(("core", 7u64)).into_vec(),
+            ("core", 7u64).encode().as_ref()
+        );
     }
 }

@@ -1,6 +1,7 @@
 use crate::bounds::{BoundsEncoder, ExactEncoder, PrefixEncoder};
 use crate::error::Error;
 use crate::item::Item;
+use crate::iter::Cursor;
 use crate::key::{AppendKey, Key};
 use crate::store::{MultiStoreWriteHandle, ReadKVStore, WriteKVStore};
 
@@ -132,6 +133,29 @@ pub trait Index<Record: Item> {
     /// Extracts the logical index key from a record.
     fn key(record: &Record) -> Self::Key<'_>;
 
+    /// Builds a cursor for this index from a record.
+    ///
+    /// The cursor uses the physical key layout of the index kind. For
+    /// [`Unique`] indexes this is the logical index key; for [`Multi`] indexes
+    /// it is the logical index key with the record primary key appended.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let cursor = ByStatus::cursor(&user);
+    ///
+    /// let next_page = users.index_scan(ByStatus)?
+    ///     .after(cursor)
+    ///     .iter()?;
+    /// ```
+    fn cursor<'a>(record: &'a Record) -> Cursor
+    where
+        Self::Kind<'a>: IndexKind<Self::Key<'a>, Record::Key<'a>>,
+    {
+        let pk = record.key();
+        Cursor::from_key(Self::Kind::store_key(Self::key(record), &pk))
+    }
+
     /// Updates this index after a record insert, save, or update.
     ///
     /// Custom implementations are rarely needed; the default implementation
@@ -257,5 +281,92 @@ where
         IndexKey: 'a,
     {
         k.append(pk)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct Record {
+        id: u32,
+        email_id: u16,
+        group: u16,
+    }
+
+    impl Item for Record {
+        type Key<'a> = u32;
+        type Error = std::convert::Infallible;
+
+        fn key(&self) -> Self::Key<'_> {
+            self.id
+        }
+
+        fn to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+            Ok(vec![])
+        }
+
+        fn from_bytes(_: &[u8]) -> Result<Self, Self::Error> {
+            Ok(Self {
+                id: 0,
+                email_id: 0,
+                group: 0,
+            })
+        }
+    }
+
+    struct ByEmailId;
+
+    impl Index<Record> for ByEmailId {
+        type Key<'a> = u16;
+        type Kind<'a> = Unique;
+
+        const NAME: &'static str = "by_email_id";
+
+        fn key(record: &Record) -> Self::Key<'_> {
+            record.email_id
+        }
+    }
+
+    struct ByGroup;
+
+    impl Index<Record> for ByGroup {
+        type Key<'a> = (u16,);
+        type Kind<'a> = Multi;
+
+        const NAME: &'static str = "by_group";
+
+        fn key(record: &Record) -> Self::Key<'_> {
+            (record.group,)
+        }
+    }
+
+    #[test]
+    fn unique_index_cursor_uses_logical_index_key() {
+        let record = Record {
+            id: 42,
+            email_id: 7,
+            group: 3,
+        };
+
+        assert_eq!(
+            ByEmailId::cursor(&record).into_vec(),
+            7u16.encode().as_ref()
+        );
+    }
+
+    #[test]
+    fn multi_index_cursor_appends_primary_key_to_index_key() {
+        let record = Record {
+            id: 42,
+            email_id: 7,
+            group: 3,
+        };
+
+        assert_eq!(
+            ByGroup::cursor(&record).into_vec(),
+            (3u16, 42u32).encode().as_ref()
+        );
     }
 }

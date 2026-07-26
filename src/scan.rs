@@ -11,14 +11,14 @@
 //! # Collection scans
 //!
 //! ```rust,ignore
-//! use collette::{Direction, Key, Scan};
+//! use collette::{Cursor, Direction, Scan};
 //!
 //! let page = collection.scan()?
 //!     .range(first_id..last_id)
 //!     .direction(Direction::LeftToRight)
 //!     .iter()?;
 //!
-//! let cursor = last_seen_id.encode().as_ref().to_vec();
+//! let cursor = Cursor::from_key(last_seen_id);
 //!
 //! let next_page = collection.scan()?
 //!     .after(cursor)
@@ -28,7 +28,7 @@
 //! # Index scans
 //!
 //! ```rust,ignore
-//! use collette::{Direction, Key, PrefixableScan, Scan};
+//! use collette::{Direction, Index, PrefixableScan, Scan};
 //!
 //! let users = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
@@ -37,10 +37,7 @@
 //!
 //! let page = users.iter()?;
 //!
-//! let cursor = (Status::Active, created_at, &user_id)
-//!     .encode()
-//!     .as_ref()
-//!     .to_vec();
+//! let cursor = ByStatusAndCreatedAt::cursor(&last_seen_user);
 //!
 //! let next_page = collection.index_scan(ByStatusAndCreatedAt)?
 //!     .prefix(Status::Active)
@@ -52,7 +49,7 @@ use crate::bounds::{BoundsEncoder, ExactEncoder, ScanBound, ScanRange};
 use crate::error::Error;
 use crate::index::{Index, IndexKind};
 use crate::item::Item;
-use crate::iter::{CollectionIterator, IndexIterator};
+use crate::iter::{CollectionIterator, Cursor, IndexIterator};
 use crate::key::Key;
 use crate::prefix::{Prefix, Prefixable};
 use crate::store::{MultiStoreReadHandle, ReadKVStore};
@@ -383,27 +380,24 @@ where
         }
     }
 
-    /// Starts the scan after an encoded cursor key.
+    /// Starts the scan after a cursor.
     ///
-    /// The cursor must be encoded with the same key layout used by the index
-    /// store. For a `Multi` index, this is typically the index key followed by
-    /// the primary key.
+    /// The cursor must use the same key layout as this index. Cursors returned
+    /// by index iterators already have the right shape. To build a cursor from
+    /// a record, use [`Index::cursor`].
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use collette::{Key, Scan};
+    /// use collette::{Index, Scan};
     ///
-    /// let cursor = (Status::Active, created_at, &user_id)
-    ///     .encode()
-    ///     .as_ref()
-    ///     .to_vec();
+    /// let cursor = ByStatusAndCreatedAt::cursor(&user);
     ///
     /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
-    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+    pub fn after(self, cursor: Cursor) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
             inner: self,
@@ -525,22 +519,24 @@ where
         }
     }
 
-    /// Starts the scan after an encoded cursor key.
+    /// Starts the scan after a cursor.
     ///
-    /// The cursor must be encoded with the same layout as the primary key.
-    /// For example, a `u64` primary key cursor can be built with
-    /// `last_seen_id.encode().as_ref().to_vec()`.
+    /// The cursor must use the same layout as the primary key. Cursors returned
+    /// by collection iterators already have the right shape. To build one from
+    /// a primary key, use [`Cursor::from_key`].
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use collette::{Key, Scan};
+    /// use collette::{Cursor, Scan};
+    ///
+    /// let cursor = Cursor::from_key(last_seen_id);
     ///
     /// let next_page = users.scan()?
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
-    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+    pub fn after(self, cursor: Cursor) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
             inner: self,
@@ -700,26 +696,23 @@ where
         }
     }
 
-    /// Starts the prefixed scan after an encoded cursor key.
+    /// Starts the prefixed scan after a cursor.
     ///
     /// The cursor must still be inside the selected prefix.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use collette::{Key, PrefixableScan, Scan};
+    /// use collette::{Index, PrefixableScan, Scan};
     ///
-    /// let cursor = (Status::Active, created_at, &user_id)
-    ///     .encode()
-    ///     .as_ref()
-    ///     .to_vec();
+    /// let cursor = ByStatusAndCreatedAt::cursor(&user);
     ///
     /// let next_page = users.index_scan(ByStatusAndCreatedAt)?
     ///     .prefix(Status::Active)
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
-    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+    pub fn after(self, cursor: Cursor) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
             inner: self,
@@ -786,23 +779,23 @@ where
         }
     }
 
-    /// Starts the ranged scan after an encoded cursor key.
+    /// Starts the ranged scan after a cursor.
     ///
     /// The cursor must fall inside the configured range.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use collette::{Key, Scan};
+    /// use collette::{Index, Scan};
     ///
-    /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
+    /// let cursor = ByCreatedAt::cursor(&user);
     ///
     /// let next_page = users.index_scan(ByCreatedAt)?
     ///     .range(from..to)
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
-    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+    pub fn after(self, cursor: Cursor) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
             inner: self,
@@ -847,7 +840,7 @@ impl<'a, S> DirectedScan<'a, S>
 where
     S: Scan,
 {
-    /// Starts the directed scan after an encoded cursor key.
+    /// Starts the directed scan after a cursor.
     ///
     /// For left-to-right scans, the cursor tightens the left bound. For
     /// right-to-left scans, it tightens the right bound.
@@ -855,16 +848,16 @@ where
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use collette::{Direction, Key, Scan};
+    /// use collette::{Direction, Index, Scan};
     ///
-    /// let cursor = (created_at, &user_id).encode().as_ref().to_vec();
+    /// let cursor = ByCreatedAt::cursor(&user);
     ///
     /// let previous_page = users.index_scan(ByCreatedAt)?
     ///     .direction(Direction::RightToLeft)
     ///     .after(cursor)
     ///     .iter()?;
     /// ```
-    pub fn after(self, cursor: Vec<u8>) -> AfterScan<'a, Self> {
+    pub fn after(self, cursor: Cursor) -> AfterScan<'a, Self> {
         AfterScan {
             cursor,
             inner: self,
@@ -882,7 +875,7 @@ pub struct AfterScan<'a, S>
 where
     S: Scan + 'a,
 {
-    cursor: Vec<u8>,
+    cursor: Cursor,
     inner: S,
 
     _marker: PhantomData<&'a ()>,
@@ -904,14 +897,15 @@ where
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
+        let cursor = self.cursor.into_vec();
 
-        if !(scan.range.0.as_ref(), scan.range.1.as_ref()).contains(&self.cursor) {
+        if !(scan.range.0.as_ref(), scan.range.1.as_ref()).contains(&cursor) {
             return Err(Error::CursorOutOfBounds);
         }
 
         match scan.direction {
-            Direction::LeftToRight => scan.range.0 = Bound::Excluded(self.cursor),
-            Direction::RightToLeft => scan.range.1 = Bound::Excluded(self.cursor),
+            Direction::LeftToRight => scan.range.0 = Bound::Excluded(cursor),
+            Direction::RightToLeft => scan.range.1 = Bound::Excluded(cursor),
         }
 
         Ok(scan)
@@ -1014,7 +1008,7 @@ mod tests {
     #[test]
     fn full_scan_after_tightens_left_bound() {
         assert_scan(
-            |scan| scan.after(encode_store_key(2, 20, 200)),
+            |scan| scan.after(Cursor::from_key((2u32, 20u32, 200u32))),
             Ok(scan_log(
                 Bound::Excluded(encode_store_key(2, 20, 200)),
                 Bound::Unbounded,
@@ -1065,7 +1059,10 @@ mod tests {
     #[test]
     fn prefixed_scan_after_tightens_left_bound() {
         assert_scan(
-            |scan| scan.prefix(2u32).after(encode_store_key(2, 20, 200)),
+            |scan| {
+                scan.prefix(2u32)
+                    .after(Cursor::from_key((2u32, 20u32, 200u32)))
+            },
             Ok(scan_log(
                 Bound::Excluded(encode_store_key(2, 20, 200)),
                 encoded_prefix_range(encode_prefix(2)).1,
@@ -1116,7 +1113,7 @@ mod tests {
             |scan| {
                 scan.range((1u32, 10u32)..(3u32, 30u32))
                     .direction(Direction::LeftToRight)
-                    .after(encode_store_key(2, 20, 200))
+                    .after(Cursor::from_key((2u32, 20u32, 200u32)))
             },
             Ok(scan_log(
                 Bound::Excluded(encode_store_key(2, 20, 200)),
@@ -1131,7 +1128,7 @@ mod tests {
         assert_scan(
             |scan| {
                 scan.range((1u32, 10u32)..(3u32, 30u32))
-                    .after(encode_store_key(2, 20, 200))
+                    .after(Cursor::from_key((2u32, 20u32, 200u32)))
             },
             Ok(scan_log(
                 Bound::Excluded(encode_store_key(2, 20, 200)),
@@ -1149,7 +1146,7 @@ mod tests {
                     Bound::Excluded((1u32, 10u32)),
                     Bound::Included((3u32, 30u32)),
                 ))
-                .after(encode_index_key(1, 10))
+                .after(Cursor::from_key((1u32, 10u32)))
             },
             Err(ErrorKind::CursorOutOfBounds),
         );
@@ -1161,7 +1158,7 @@ mod tests {
             |scan| {
                 scan.range((1u32, 10u32)..(3u32, 30u32))
                     .direction(Direction::RightToLeft)
-                    .after(encode_index_key(3, 30))
+                    .after(Cursor::from_key((3u32, 30u32)))
             },
             Err(ErrorKind::CursorOutOfBounds),
         );
@@ -1173,7 +1170,7 @@ mod tests {
             |scan| {
                 scan.range((1u32, 10u32)..(3u32, 30u32))
                     .direction(Direction::RightToLeft)
-                    .after(encode_store_key(2, 20, 200))
+                    .after(Cursor::from_key((2u32, 20u32, 200u32)))
             },
             Ok(scan_log(
                 Bound::Included(encode_index_key(1, 10)),
@@ -1186,7 +1183,10 @@ mod tests {
     #[test]
     fn cursor_outside_bounds_fails_before_opening_stores() {
         assert_scan(
-            |scan| scan.prefix(2u32).after(encode_store_key(3, 20, 200)),
+            |scan| {
+                scan.prefix(2u32)
+                    .after(Cursor::from_key((3u32, 20u32, 200u32)))
+            },
             Err(ErrorKind::CursorOutOfBounds),
         );
     }
@@ -1230,7 +1230,7 @@ mod tests {
     #[test]
     fn collection_scan_after_tightens_left_bound() {
         assert_collection_scan(
-            |scan| scan.after(encode_primary_key(10)),
+            |scan| scan.after(Cursor::from_key(10u32)),
             Ok(scan_log(
                 Bound::Excluded(encode_primary_key(10)),
                 Bound::Unbounded,
@@ -1244,7 +1244,7 @@ mod tests {
         assert_collection_scan(
             |scan| {
                 scan.direction(Direction::RightToLeft)
-                    .after(encode_primary_key(10))
+                    .after(Cursor::from_key(10u32))
             },
             Ok(scan_log(
                 Bound::Unbounded,
@@ -1257,7 +1257,7 @@ mod tests {
     #[test]
     fn collection_scan_cursor_outside_bounds_fails_before_opening_stores() {
         assert_collection_scan(
-            |scan| scan.range(10u32..20u32).after(encode_primary_key(30)),
+            |scan| scan.range(10u32..20u32).after(Cursor::from_key(30u32)),
             Err(ErrorKind::CursorOutOfBounds),
         );
     }
