@@ -155,3 +155,21 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_from_key_encodes_primary_key_bytes() {
+        assert_eq!(Cursor::from_key(42u64).into_vec(), 42u64.encode().as_ref());
+    }
+
+    #[test]
+    fn cursor_from_key_accepts_composite_keys() {
+        assert_eq!(
+            Cursor::from_key(("core", 7u64)).into_vec(),
+            ("core", 7u64).encode().as_ref()
+        );
+    }
+}
