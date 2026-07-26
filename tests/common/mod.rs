@@ -27,6 +27,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     scans_filter_lexicographically_with_ranges_directions_and_cursors(&make_db);
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
     multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
+    collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(&make_db);
 }
 
 #[macro_export]
@@ -107,6 +108,13 @@ macro_rules! collection_contract_tests {
         #[test]
         fn multi_index_ranges_apply_bounds_to_logical_keys() {
             $crate::common::multi_index_ranges_apply_bounds_to_logical_keys(&$make_db);
+        }
+
+        #[test]
+        fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors() {
+            $crate::common::collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(
+                &$make_db,
+            );
         }
     };
 }
@@ -510,6 +518,48 @@ pub fn multi_index_ranges_apply_bounds_to_logical_keys<DB: MultiStore>(make_db: 
         ),
         vec!["linus"]
     );
+}
+
+pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<DB: MultiStore>(
+    make_db: &impl Fn() -> DB,
+) {
+    let users = seeded_user_collection("collection_scan_primary_key_bounds", make_db());
+
+    assert_eq!(
+        scan_handles(users.scan().unwrap()),
+        vec!["ada", "grace", "linus", "margaret", "yukihiro", "dennis"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().range(101u64..104u64)),
+        vec!["grace", "linus", "margaret"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().direction(Direction::RightToLeft)),
+        vec!["dennis", "yukihiro", "margaret", "linus", "grace", "ada"]
+    );
+    assert_eq!(
+        scan_handles(users.scan().unwrap().after(encode(101u64))),
+        vec!["linus", "margaret", "yukihiro", "dennis"]
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .scan()
+                .unwrap()
+                .direction(Direction::RightToLeft)
+                .after(encode(103u64))
+        ),
+        vec!["linus", "grace", "ada"]
+    );
+    assert!(matches!(
+        users
+            .scan()
+            .unwrap()
+            .range(101u64..104u64)
+            .after(encode(105u64))
+            .iter(),
+        Err(Error::CursorOutOfBounds)
+    ));
 }
 
 pub type UserCollection<DB> = Collection<
