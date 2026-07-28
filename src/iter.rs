@@ -15,6 +15,12 @@ pub struct Entry<Record> {
     pub key: Cursor,
 }
 
+impl<Record: Item> AsRef<Record> for Entry<Record> {
+    fn as_ref(&self) -> &Record {
+        &self.record
+    }
+}
+
 /// Opaque cursor for resuming a scan.
 ///
 /// Pass a cursor to `after` on a scan builder to resume after the corresponding
