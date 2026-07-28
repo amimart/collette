@@ -6,6 +6,7 @@ use crate::item::Item;
 use crate::key::Key;
 use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
+use std::ops::Deref;
 
 /// One record returned from a collection or index scan.
 pub struct Entry<Record> {
@@ -17,6 +18,14 @@ pub struct Entry<Record> {
 
 impl<Record: Item> AsRef<Record> for Entry<Record> {
     fn as_ref(&self) -> &Record {
+        &self.record
+    }
+}
+
+impl<Record: Item> Deref for Entry<Record> {
+    type Target = Record;
+
+    fn deref(&self) -> &Self::Target {
         &self.record
     }
 }
