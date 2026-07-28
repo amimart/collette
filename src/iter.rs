@@ -28,22 +28,17 @@ pub struct IndexEntry<Record> {
 /// [`Cursor::from_key`]. For secondary index scans, prefer
 /// [`Index::cursor`](crate::Index::cursor), which accounts for the index kind's
 /// physical key layout.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum Cursor {
     /// No cursor.
     ///
     /// Passing this to `after` leaves the scan unchanged.
+    #[default]
     None,
     /// Encoded cursor key.
     ///
     /// Values yielded by collection and index iterators use this variant.
     Key(IVec),
-}
-
-impl Default for Cursor {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl Cursor {
