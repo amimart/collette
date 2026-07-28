@@ -15,18 +15,36 @@ pub struct IndexEntry<Record> {
     pub key: Cursor,
 }
 
-/// Opaque cursor key for a scan entry.
+/// Opaque cursor for resuming a scan.
 ///
 /// Pass a cursor to `after` on a scan builder to resume after the corresponding
 /// entry. Cursors yielded by iterators are already encoded for the scan that
 /// produced them.
+///
+/// [`Cursor::None`] represents the absence of a cursor. This is useful for
+/// cursor-based pagination APIs where the first page has no resume point yet.
 ///
 /// For primary collection scans, build a cursor from a primary key with
 /// [`Cursor::from_key`]. For secondary index scans, prefer
 /// [`Index::cursor`](crate::Index::cursor), which accounts for the index kind's
 /// physical key layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Cursor(IVec);
+pub enum Cursor {
+    /// No cursor.
+    ///
+    /// Passing this to `after` leaves the scan unchanged.
+    None,
+    /// Encoded cursor key.
+    ///
+    /// Values yielded by collection and index iterators use this variant.
+    Key(IVec),
+}
+
+impl Default for Cursor {
+    fn default() -> Self {
+        Self::None
+    }
+}
 
 impl Cursor {
     /// Builds a cursor from an ordered key.
@@ -37,16 +55,21 @@ impl Cursor {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let next_page = users.scan()?
-    ///     .after(Cursor::from_key(42u64))
+    /// let cursor = maybe_cursor.unwrap_or_default();
+    ///
+    /// let page = users.scan()?
+    ///     .after(cursor)
     ///     .iter()?;
     /// ```
     pub fn from_key(key: impl Key) -> Self {
-        Self(IVec::from(key.encode().as_ref()))
+        Self::Key(IVec::from(key.encode().as_ref()))
     }
 
-    pub(crate) fn into_vec(self) -> Vec<u8> {
-        self.0.into_vec()
+    pub(crate) fn into_key_vec(self) -> Option<Vec<u8>> {
+        match self {
+            Self::None => None,
+            Self::Key(key) => Some(key.into_vec()),
+        }
     }
 }
 
@@ -103,7 +126,7 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(IVec::from(entry.key())),
+                    key: Cursor::Key(IVec::from(entry.key())),
                 })
             })
         })
@@ -149,7 +172,7 @@ where
 
                 Ok(IndexEntry {
                     record,
-                    key: Cursor(IVec::from(entry.key())),
+                    key: Cursor::Key(IVec::from(entry.key())),
                 })
             })
         })
@@ -163,14 +186,23 @@ mod tests {
 
     #[test]
     fn cursor_from_key_encodes_primary_key_bytes() {
-        assert_eq!(Cursor::from_key(42u64).into_vec(), 42u64.encode().as_ref());
+        assert_eq!(
+            Cursor::from_key(42u64).into_key_vec().unwrap(),
+            42u64.encode().as_ref()
+        );
     }
 
     #[test]
     fn cursor_from_key_accepts_composite_keys() {
         assert_eq!(
-            Cursor::from_key(("core", 7u64)).into_vec(),
+            Cursor::from_key(("core", 7u64)).into_key_vec().unwrap(),
             ("core", 7u64).encode().as_ref()
         );
+    }
+
+    #[test]
+    fn cursor_default_is_none() {
+        assert_eq!(Cursor::default(), Cursor::None);
+        assert_eq!(Cursor::None.into_key_vec(), None);
     }
 }
