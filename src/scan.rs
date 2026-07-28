@@ -384,7 +384,8 @@ where
     ///
     /// The cursor must use the same key layout as this index. Cursors returned
     /// by index iterators already have the right shape. To build a cursor from
-    /// a record, use [`Index::cursor`].
+    /// a record, use [`Index::cursor`]. [`Cursor::None`] leaves the scan
+    /// unchanged.
     ///
     /// # Examples
     ///
@@ -578,7 +579,9 @@ where
     ///
     /// The cursor must use the same layout as the primary key. Cursors returned
     /// by collection iterators already have the right shape. To build one from
-    /// a primary key, use [`Cursor::from_key`].
+    /// a primary key, use [`Cursor::from_key`]. [`Cursor::None`] leaves the
+    /// scan unchanged, which is useful for the first page of cursor-based
+    /// pagination.
     ///
     /// # Examples
     ///
@@ -754,6 +757,7 @@ where
     /// Starts the prefixed scan after a cursor.
     ///
     /// The cursor must still be inside the selected prefix.
+    /// [`Cursor::None`] leaves the scan unchanged.
     ///
     /// # Examples
     ///
@@ -836,7 +840,8 @@ where
 
     /// Starts the ranged scan after a cursor.
     ///
-    /// The cursor must fall inside the configured range.
+    /// The cursor must fall inside the configured range. [`Cursor::None`]
+    /// leaves the scan unchanged.
     ///
     /// # Examples
     ///
@@ -898,7 +903,8 @@ where
     /// Starts the directed scan after a cursor.
     ///
     /// For left-to-right scans, the cursor tightens the left bound. For
-    /// right-to-left scans, it tightens the right bound.
+    /// right-to-left scans, it tightens the right bound. [`Cursor::None`]
+    /// leaves the scan unchanged.
     ///
     /// # Examples
     ///
@@ -921,11 +927,12 @@ where
     }
 }
 
-/// Scan builder with an encoded cursor applied.
+/// Scan builder with a cursor applied.
 ///
 /// Returned by `after` methods on the other scan builders. The cursor is
 /// validated when the scan is compiled; if it falls outside the configured
-/// bounds, iteration returns [`Error::CursorOutOfBounds`].
+/// bounds, iteration returns [`Error::CursorOutOfBounds`]. [`Cursor::None`]
+/// leaves the scan unchanged.
 pub struct AfterScan<'a, S>
 where
     S: Scan + 'a,
@@ -952,7 +959,9 @@ where
 
     fn compile(self) -> Result<CompiledScan<Self::Executor>, Error> {
         let mut scan = self.inner.compile()?;
-        let cursor = self.cursor.into_vec();
+        let Some(cursor) = self.cursor.into_key_vec() else {
+            return Ok(scan);
+        };
 
         if !(scan.range.0.as_ref(), scan.range.1.as_ref()).contains(&cursor) {
             return Err(Error::CursorOutOfBounds);
@@ -1085,6 +1094,18 @@ mod tests {
             |scan| scan.after(Cursor::from_key((2u32, 20u32, 200u32))),
             Ok(scan_log(
                 Bound::Excluded(encode_store_key(2, 20, 200)),
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn full_scan_after_none_leaves_scan_unbounded() {
+        assert_scan(
+            |scan| scan.after(Cursor::None),
+            Ok(scan_log(
+                Bound::Unbounded,
                 Bound::Unbounded,
                 Direction::LeftToRight,
             )),
@@ -1352,6 +1373,18 @@ mod tests {
             |scan| scan.after(Cursor::from_key(10u32)),
             Ok(scan_log(
                 Bound::Excluded(encode_primary_key(10)),
+                Bound::Unbounded,
+                Direction::LeftToRight,
+            )),
+        );
+    }
+
+    #[test]
+    fn collection_scan_after_none_leaves_scan_unbounded() {
+        assert_collection_scan(
+            |scan| scan.after(Cursor::None),
+            Ok(scan_log(
+                Bound::Unbounded,
                 Bound::Unbounded,
                 Direction::LeftToRight,
             )),
