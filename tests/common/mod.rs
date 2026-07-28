@@ -6,7 +6,7 @@ use collette::impl_enum_key;
 use collette::index::{Index, Multi, Unique};
 use collette::index_registry::{Cons, Nil};
 use collette::item::Item;
-use collette::iter::IndexEntry;
+use collette::iter::Entry;
 use collette::key::Key;
 use collette::scan::{Direction, PrefixableScan, Scan, ScanExecutor};
 use collette::store::MultiStore;
@@ -1029,7 +1029,7 @@ fn sample_users() -> Vec<User> {
 fn scan_handles<S>(scan: S) -> Vec<String>
 where
     S: Scan,
-    <S::Executor as ScanExecutor>::Iter: Iterator<Item = Result<IndexEntry<User>, Error>>,
+    <S::Executor as ScanExecutor>::Iter: Iterator<Item = Result<Entry<User>, Error>>,
 {
     scan.iter()
         .unwrap()
