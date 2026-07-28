@@ -8,7 +8,7 @@ use crate::store::{KVEntry, ReadKVStore};
 use std::marker::PhantomData;
 
 /// One record returned from a collection or index scan.
-pub struct IndexEntry<Record> {
+pub struct Entry<Record> {
     /// The decoded record.
     pub record: Record,
     /// Cursor for resuming a scan after this entry.
@@ -104,7 +104,7 @@ where
     Store: ReadKVStore,
     Record: Item,
 {
-    type Item = Result<IndexEntry<Record>, Error>;
+    type Item = Result<Entry<Record>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|res| {
@@ -119,7 +119,7 @@ where
                     )))?;
                 let record = Record::from_bytes(record_bytes.as_ref()).map_err(Error::codec)?;
 
-                Ok(IndexEntry {
+                Ok(Entry {
                     record,
                     key: Cursor::Key(IVec::from(entry.key())),
                 })
@@ -158,14 +158,14 @@ where
     Store: ReadKVStore,
     Record: Item,
 {
-    type Item = Result<IndexEntry<Record>, Error>;
+    type Item = Result<Entry<Record>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|res| {
             res.map_err(Error::backend).and_then(|entry| {
                 let record = Record::from_bytes(entry.value()).map_err(Error::codec)?;
 
-                Ok(IndexEntry {
+                Ok(Entry {
                     record,
                     key: Cursor::Key(IVec::from(entry.key())),
                 })
