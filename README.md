@@ -20,18 +20,16 @@ Collette is not an ORM, query planner, SQL layer, or database server.
 
 ## Install
 
-Add Collette to your `Cargo.toml`:
+Add Collette with Cargo:
 
-```toml
-[dependencies]
-collette = "0.1"
+```sh
+cargo add collette
 ```
 
 The in-memory backend is enabled by default. Enable `redb` for persistent embedded storage:
 
-```toml
-[dependencies]
-collette = { version = "0.1", features = ["redb"] }
+```sh
+cargo add collette --features redb
 ```
 
 ## Quick Start
