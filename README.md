@@ -206,7 +206,6 @@ let recently_active_users = users.index_scan(ByStatusAndCreatedAt)?
     .direction(Direction::LeftToRight)
     .iter()?;
 
-let last_seen_user = /* record from the previous page */;
 let cursor = ByStatusAndCreatedAt::cursor(&last_seen_user);
 
 let next_page = users.index_scan(ByStatusAndCreatedAt)?
