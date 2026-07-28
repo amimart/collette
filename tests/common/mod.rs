@@ -30,6 +30,7 @@ pub fn run_collection_contract_tests<DB: MultiStore>(make_db: impl Fn() -> DB) {
     prefixed_ranges_are_clamped_to_the_selected_prefix(&make_db);
     multi_index_ranges_apply_bounds_to_logical_keys(&make_db);
     collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(&make_db);
+    cursor_none_leaves_scans_unchanged(&make_db);
     scans_resume_from_returned_cursors(&make_db);
 }
 
@@ -123,6 +124,11 @@ macro_rules! collection_contract_tests {
             $crate::common::collection_scans_filter_primary_keys_with_ranges_directions_and_cursors(
                 &$make_db,
             );
+        }
+
+        #[test]
+        fn cursor_none_leaves_scans_unchanged() {
+            $crate::common::cursor_none_leaves_scans_unchanged(&$make_db);
         }
 
         #[test]
@@ -606,6 +612,34 @@ pub fn collection_scans_filter_primary_keys_with_ranges_directions_and_cursors<D
             .iter(),
         Err(Error::CursorOutOfBounds)
     ));
+}
+
+pub fn cursor_none_leaves_scans_unchanged<DB: MultiStore>(make_db: &impl Fn() -> DB) {
+    let users = seeded_user_collection("cursor_none_leaves_scans_unchanged", make_db());
+
+    assert_eq!(
+        scan_handles(users.scan().unwrap().after(Cursor::None)),
+        scan_handles(users.scan().unwrap())
+    );
+    assert_eq!(
+        scan_handles(users.index_scan(ByStatus).unwrap().after(Cursor::None)),
+        scan_handles(users.index_scan(ByStatus).unwrap())
+    );
+    assert_eq!(
+        scan_handles(
+            users
+                .index_scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+                .after(Cursor::None)
+        ),
+        scan_handles(
+            users
+                .index_scan(ByRegionStatus)
+                .unwrap()
+                .prefix(Region::Europe)
+        )
+    );
 }
 
 pub fn scans_resume_from_returned_cursors<DB: MultiStore>(make_db: &impl Fn() -> DB) {

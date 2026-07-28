@@ -367,7 +367,7 @@ mod tests {
         };
 
         assert_eq!(
-            ByEmailId::cursor(&record).into_vec(),
+            ByEmailId::cursor(&record).into_key_vec().unwrap(),
             7u16.encode().as_ref()
         );
     }
@@ -381,7 +381,7 @@ mod tests {
         };
 
         assert_eq!(
-            ByGroup::cursor(&record).into_vec(),
+            ByGroup::cursor(&record).into_key_vec().unwrap(),
             (3u16, 42u32).encode().as_ref()
         );
     }
