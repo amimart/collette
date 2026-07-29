@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.4.0 - 2026-07-29
+
+### Breaking Changes
+
+* ✨ Allow noop cursors ([#38](https://github.com/amimart/collette/pull/38))
+* ♻️ Iter entry cleanup ([#39](https://github.com/amimart/collette/pull/39))
+
+### Features
+
+* ✨ Allow noop cursors ([#38](https://github.com/amimart/collette/pull/38))
+* ♻️ Iter entry cleanup ([#39](https://github.com/amimart/collette/pull/39))
+
+### Other Changes
+
+* 📝 Provide cargo add cmd as install doc ([#40](https://github.com/amimart/collette/pull/40))
+* 🏗️ Rework release note generation ([#41](https://github.com/amimart/collette/pull/41))
+
+**Full Changelog**: <https://github.com/amimart/collette/compare/v0.3.0...v0.4.0>
+
 ## v0.3.0 - 2026-07-26
 
 ### Breaking Changes
