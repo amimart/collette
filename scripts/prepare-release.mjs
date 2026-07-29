@@ -337,6 +337,10 @@ function releaseEntries(previousTag) {
   return sections;
 }
 
+function hasReleaseEntries(sections) {
+  return Object.values(sections).some((entries) => entries.length > 0);
+}
+
 function fullChangelogUrl(previousTag, tag) {
   const repoUrl = repositoryUrl();
 
@@ -349,8 +353,7 @@ function fullChangelogUrl(previousTag, tag) {
     : `${repoUrl}/commits/${tag}`;
 }
 
-function renderReleaseNotes(previousTag, tag) {
-  const sections = releaseEntries(previousTag);
+function renderReleaseNotes(sections, previousTag, tag) {
   const replacements = {};
 
   for (const [key, title] of releaseSections) {
@@ -440,11 +443,13 @@ function apply(notesFile) {
 function notes() {
   const previousTag = process.env.PREVIOUS_TAG || latestTag();
   const tag = process.env.TAG || `v${currentVersion()}`;
-  const rendered = renderReleaseNotes(previousTag, tag);
+  const sections = releaseEntries(previousTag);
 
-  if (!rendered) {
+  if (!hasReleaseEntries(sections)) {
     throw new Error("Release notes are empty");
   }
+
+  const rendered = renderReleaseNotes(sections, previousTag, tag);
 
   console.log(rendered);
 }
