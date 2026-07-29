@@ -6,6 +6,20 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const changelogPath = "CHANGELOG.md";
 const cargoTomlPath = "Cargo.toml";
 const cleanNotesPath = "release-notes-clean.md";
+const releaseNotesTemplatePath = ".github/release-notes.md.tpl";
+const releaseSections = [
+  ["breaking_changes", "Breaking Changes"],
+  ["features", "Features"],
+  ["bug_fixes", "Bug Fixes"],
+  ["security", "Security"],
+  ["other_changes", "Other Changes"],
+];
+const releaseLabelSections = new Map([
+  ["breaking-change", "breaking_changes"],
+  ["enhancement", "features"],
+  ["bug", "bug_fixes"],
+  ["security", "security"],
+]);
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -103,6 +117,26 @@ function parseCommits(previousTag) {
     });
 }
 
+function parseFirstParentCommits(previousTag) {
+  const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
+  const output = tryRun("git", [
+    "log",
+    "--first-parent",
+    "--reverse",
+    "--format=%H%x00%s%x00%b%x00%P%x1e",
+    range,
+  ]);
+
+  return output
+    .split("\x1e")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [hash, subject, body = "", parents = ""] = entry.split("\x00");
+      return { hash, subject, body, parents: parents.split(" ").filter(Boolean) };
+    });
+}
+
 function commitBump(commit) {
   const subject = commit.subject.trim();
   const body = commit.body.trim();
@@ -182,11 +216,156 @@ function tagVersion(tag) {
   return version;
 }
 
-function cleanReleaseNotes(notes) {
-  return notes
-    .replace(/<!-- Release notes generated using configuration in \.github\/release\.yml at .+? -->\s*/g, "")
-    .replace(/^## What's Changed\s*/m, "")
-    .replace(/(?:^|\n)## New Contributors\s+[\s\S]*?(?=\n\*\*Full Changelog\*\*:|\n## |\s*$)/m, "\n")
+function repositoryUrl() {
+  if (process.env.GITHUB_REPOSITORY) {
+    return `https://github.com/${process.env.GITHUB_REPOSITORY}`;
+  }
+
+  const manifest = readFileSync(cargoTomlPath, "utf8");
+  return manifest.match(/^repository = "([^"]+)"$/m)?.[1] ?? "";
+}
+
+function pullRequestInfo(commit) {
+  const match = commit.subject.match(/^Merge pull request #(\d+) from .+$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const title = commit.body
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  return {
+    number: match[1],
+    title: title || commit.subject,
+  };
+}
+
+function mockedPullRequestLabels() {
+  const raw = process.env.RELEASE_NOTES_PR_LABELS;
+
+  if (!raw) {
+    return null;
+  }
+
+  return new Map(
+    Object.entries(JSON.parse(raw)).map(([number, labels]) => [
+      number,
+      labels.map((label) => label.toLowerCase()),
+    ]),
+  );
+}
+
+function pullRequestLabels(number, mockedLabels = mockedPullRequestLabels()) {
+  if (mockedLabels?.has(number)) {
+    return mockedLabels.get(number);
+  }
+
+  const output = run("gh", [
+    "pr",
+    "view",
+    number,
+    "--json",
+    "labels",
+    "--jq",
+    ".labels[].name",
+  ]);
+
+  return output
+    .split("\n")
+    .map((label) => label.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function sectionKeysForLabels(labels) {
+  const keys = new Set();
+
+  for (const label of labels) {
+    const key = releaseLabelSections.get(label);
+
+    if (key) {
+      keys.add(key);
+    }
+  }
+
+  if (keys.size === 0) {
+    keys.add("other_changes");
+  }
+
+  return keys;
+}
+
+function releaseItem(commit, repoUrl) {
+  const pr = pullRequestInfo(commit);
+
+  if (pr && repoUrl) {
+    return `* ${pr.title} ([#${pr.number}](${repoUrl}/pull/${pr.number}))`;
+  }
+
+  if (pr) {
+    return `* ${pr.title} (#${pr.number})`;
+  }
+
+  const shortHash = commit.hash.slice(0, 7);
+  return repoUrl
+    ? `* ${commit.subject} ([${shortHash}](${repoUrl}/commit/${commit.hash}))`
+    : `* ${commit.subject} (${shortHash})`;
+}
+
+function releaseEntries(previousTag) {
+  const repoUrl = repositoryUrl();
+  const sections = Object.fromEntries(releaseSections.map(([key]) => [key, []]));
+  const mockedLabels = mockedPullRequestLabels();
+
+  for (const commit of parseFirstParentCommits(previousTag)) {
+    if (/^chore\(release\): v\d+\.\d+\.\d+/.test(commit.subject)) {
+      continue;
+    }
+
+    const item = releaseItem(commit, repoUrl);
+    const pr = pullRequestInfo(commit);
+    const labels = pr ? pullRequestLabels(pr.number, mockedLabels) : [];
+    const sectionKeys = pr ? sectionKeysForLabels(labels) : new Set(["other_changes"]);
+
+    for (const key of sectionKeys) {
+      sections[key].push(item);
+    }
+  }
+
+  return sections;
+}
+
+function fullChangelogUrl(previousTag, tag) {
+  const repoUrl = repositoryUrl();
+
+  if (!repoUrl) {
+    return "";
+  }
+
+  return previousTag
+    ? `${repoUrl}/compare/${previousTag}...${tag}`
+    : `${repoUrl}/commits/${tag}`;
+}
+
+function renderReleaseNotes(previousTag, tag) {
+  const sections = releaseEntries(previousTag);
+  const replacements = {};
+
+  for (const [key, title] of releaseSections) {
+    replacements[key] = sections[key].length
+      ? `### ${title}\n\n${sections[key].join("\n")}\n`
+      : "";
+  }
+
+  const changelogUrl = fullChangelogUrl(previousTag, tag);
+  replacements.full_changelog = changelogUrl
+    ? `**Full Changelog**: <${changelogUrl}>`
+    : "";
+
+  return readFileSync(releaseNotesTemplatePath, "utf8")
+    .replace(/{{([a-z_]+)}}/g, (_, key) => replacements[key] ?? "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -250,7 +429,7 @@ function apply(notesFile) {
     throw new Error("Usage: prepare-release.mjs apply <notes-file>");
   }
 
-  const notes = cleanReleaseNotes(readFileSync(notesFile, "utf8"));
+  const notes = readFileSync(notesFile, "utf8").trim();
 
   updateCargoTomlVersion(version);
   updateCargoLockVersion(version);
@@ -258,12 +437,26 @@ function apply(notesFile) {
   writeFileSync(cleanNotesPath, `${notes}\n`);
 }
 
+function notes() {
+  const previousTag = process.env.PREVIOUS_TAG || latestTag();
+  const tag = process.env.TAG || `v${currentVersion()}`;
+  const rendered = renderReleaseNotes(previousTag, tag);
+
+  if (!rendered) {
+    throw new Error("Release notes are empty");
+  }
+
+  console.log(rendered);
+}
+
 const [command, notesFile] = process.argv.slice(2);
 
 if (command === "plan") {
   plan();
+} else if (command === "notes") {
+  notes();
 } else if (command === "apply") {
   apply(notesFile);
 } else {
-  throw new Error("Usage: prepare-release.mjs <plan|apply> [notes-file]");
+  throw new Error("Usage: prepare-release.mjs <plan|notes|apply> [notes-file]");
 }
