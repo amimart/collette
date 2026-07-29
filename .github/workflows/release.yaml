@@ -76,19 +76,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
           PREVIOUS_TAG: ${{ steps.plan.outputs.previous_tag }}
           TAG: ${{ steps.plan.outputs.tag }}
-        run: |
-          args=(
-            -f "tag_name=${TAG}"
-            -f "target_commitish=main"
-          )
-
-          if [ -n "${PREVIOUS_TAG}" ]; then
-            args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
-          fi
-
-          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            "${args[@]}" \
-            --jq .body > release-notes.md
+        run: node scripts/prepare-release.mjs notes > release-notes.md
 
       - name: Update release files
         env:
