@@ -9,20 +9,10 @@ Use the standard Rust toolchain configured by `rust-toolchain.toml`.
 Before opening a pull request, run:
 
 ```sh
-cargo fmt --check
-cargo clippy -- -D warnings
-cargo test
+make check
 ```
 
 The CI also runs Markdown, YAML, and security audit checks.
-
-## Coverage
-
-The coverage workflow uploads Rust coverage reports to Codecov. Provision a
-`CODECOV_TOKEN` GitHub Actions repository secret with the repository upload token
-from Codecov. For this public repository, pull requests from forks can upload
-coverage without access to that secret if tokenless uploads are enabled in
-Codecov.
 
 ## Pull Requests
 
