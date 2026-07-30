@@ -57,8 +57,3 @@ The workflow commits `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md` back to
 
 The pushed tag triggers the `Publish` workflow. That workflow checks that the
 tag version matches `Cargo.toml`, then publishes the crate to crates.io.
-
-## Publishing Setup
-
-Create a crates.io API token with publish permission for the crate, then add it
-to the repository secrets as `CARGO_REGISTRY_TOKEN`.
