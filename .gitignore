@@ -21,3 +21,7 @@ target
 #.idea/
 
 lcov.info
+
+# Nix
+.direnv/
+result
